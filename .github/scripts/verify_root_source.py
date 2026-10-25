@@ -40,3 +40,6 @@ assert '-1.0' not in native and '((char*)' not in native
 assert 'externalNativeBuild' in (root/'portal-xposed/build.gradle').read_text()
 assert '.server.RootAuxService' in manifest
 print('Native/peer guardrails passed: bundled native ABI/lease, read-only peers, independent GNSS service.')
+
+assert 'if (uid == android.os.Process.SYSTEM_UID || uid == 0) return true' not in binder
+print('Shared-UID controller bypass is absent; peers cannot obtain write authority through UID 1000.')

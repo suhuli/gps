@@ -51,7 +51,7 @@ object BinderUtils {
      * Check whether the `PortalService` is started properly
      */
     fun isLocationProviderEnabled(uid: Int): Boolean {
-        if (uid == android.os.Process.SYSTEM_UID || uid == 0) return true
+        // No UID 0/1000 write-command exception: shared-UID peers must remain read-only.
         return runCatching {
             val context = getSystemContext() ?: return false
             val pm = context.packageManager
