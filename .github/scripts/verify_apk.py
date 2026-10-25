@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import zipfile
 
 variant = os.environ['BUILD_TYPE']
 apks = list(Path(f'app/build/outputs/apk/{variant}').glob('*.apk'))
@@ -23,11 +24,36 @@ expected = os.environ['EXPECTED_SIGNING_SHA1'].replace(':', '').lower()
 if not sha1 or sha1.group(1).lower() != expected:
     raise SystemExit('APK signing certificate does not match the fixed project certificate')
 
+# Validate the compiled result, not just Gradle's applicationId setting.
+manifest = subprocess.check_output([str(tools / 'aapt'), 'dump', 'xmltree', str(apk), 'AndroidManifest.xml'], text=True)
+legacy = '.'.join(('com', 'huolala', 'mockgps'))
+if legacy in manifest:
+    raise SystemExit('Legacy application component namespace found in compiled Manifest')
+for key_name, env_name in [('com.baidu.lbsapi.API_KEY', 'BAIDU_MAP_KEY'), ('com.amap.api.v2.apikey', 'AMAP_MAP_KEY')]:
+    expected_key = os.environ.get(env_name)
+    config_name = 'map_key' if env_name == 'BAIDU_MAP_KEY' else 'amap_key'
+    configured = re.search(r"(?m)^\s*" + config_name + r"\s*:\s*'([^']*)'", Path('config.gradle').read_text())
+    if configured:
+        expected_key = configured.group(1)
+    blocks = re.split(r'\n\s*E: ', manifest)
+    matching = [block for block in blocks if key_name in block]
+    if not expected_key or not matching or (expected_key and not any('"' + expected_key + '"' in block for block in matching)):
+        raise SystemExit('Compiled map credential does not match the requested build configuration: ' + env_name)
+with zipfile.ZipFile(apk) as archive:
+    forbidden = [legacy.encode(), legacy.replace('.', '/').encode(), b'www.' + b'pgyer.com', b'/apiv2/app/' + b'check']
+    for entry in archive.namelist():
+        if re.fullmatch(r'classes\d*\.dex', entry):
+            contents = archive.read(entry)
+            if any(token in contents for token in forbidden):
+                raise SystemExit('Retired updater or legacy application namespace found in compiled DEX')
+print('Compiled Manifest, application namespace, retired-channel scan and both map credential checks passed.')
+
 out = Path('artifacts')
 out.mkdir(exist_ok=True)
 source_slug = os.environ['SOURCE_BRANCH'].replace('/', '-')
 name = f"yadea-smartmoto-{os.environ['APPLICATION_ID']}-{source_slug}-{variant}.apk"
-(out / name).write_bytes(apk.read_bytes())
+if os.environ.get("COPY_APK_ARTIFACT", "true").lower() == "true":
+    (out / name).write_bytes(apk.read_bytes())
 (out / 'signing-certificate.txt').write_text(signing)
 info = '\n'.join([
     'App name: ' + os.environ.get('APP_NAME', '雅迪智行'),

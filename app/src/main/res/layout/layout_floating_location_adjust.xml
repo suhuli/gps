@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:background="@drawable/shape_round_10_color_black_30_right_circle_left">
 
-    <com.huolala.mockgps.widget.RockerView
+    <com.yadea.smartmoto.widget.RockerView
         android:id="@+id/rocker_view"
         android:layout_width="100dp"
         android:layout_height="100dp"
@@ -37,7 +37,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintVertical_chainStyle="spread_inside" />
 
-        <com.huolala.mockgps.widget.RegulateView
+        <com.yadea.smartmoto.widget.RegulateView
             android:id="@+id/speed_view"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

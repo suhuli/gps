@@ -1,10 +1,6 @@
 # MockGps #
 
-# Apk DownLoad
-
-![download.jepg](./img/download.jpeg)<br>
-<https://www.pgyer.com/hHJ9>
-<br>
+当前分支为雅迪智行双地图版本。安装包由本仓库 GitHub Actions 构建，构建与 Key 配置见 [BUILDING.md](BUILDING.md)。应用内不提供旧版下载入口或自动更新通道。以下保留原项目功能说明、作者历史与使用限制。
 
 # 功能v2.0
 

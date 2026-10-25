@@ -74,7 +74,7 @@
         app:layout_constraintRight_toLeftOf="@id/speed_nav_view"
         app:layout_constraintTop_toTopOf="@id/btn_nav_change" />
 
-    <com.huolala.mockgps.widget.RegulateView
+    <com.yadea.smartmoto.widget.RegulateView
         android:id="@+id/speed_nav_view"
         android:layout_width="0dp"
         android:layout_height="wrap_content"

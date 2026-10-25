@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace "com.huolala.mockgps"
+    namespace "com.yadea.smartmoto"
     buildFeatures { viewBinding true; buildConfig true }
     testOptions { unitTests.all { maxHeapSize = "256m" } }
     compileSdkVersion rootProject.ext.android.compileSdkVersion

@@ -8,7 +8,7 @@
     tools:background="@color/black_30"
     tools:parentTag="android.widget.LinearLayout">
 
-    <com.huolala.mockgps.widget.LongClickImageButton
+    <com.yadea.smartmoto.widget.LongClickImageButton
         android:id="@+id/iv_subtract"
         android:layout_width="0dp"
         android:layout_height="match_parent"
@@ -26,7 +26,7 @@
         android:textColor="@color/white"
         android:textSize="12sp" />
 
-    <com.huolala.mockgps.widget.LongClickImageButton
+    <com.yadea.smartmoto.widget.LongClickImageButton
         android:id="@+id/iv_add"
         android:layout_width="0dp"
         android:layout_height="30dp"

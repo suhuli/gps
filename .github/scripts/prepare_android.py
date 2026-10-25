@@ -79,11 +79,11 @@ android {
 ''')
 
 # This is only an on-screen path hint; runtime storage already uses Context paths.
-expand = Path('app/src/main/java/com/huolala/mockgps/ui/ExpandActivity.kt')
+expand = Path('app/src/main/java/com/yadea/smartmoto/ui/ExpandActivity.kt')
 if expand.exists():
     expand.write_text(expand.read_text().replace(
-        '/Android/data/com.huolala.mockgps/files/nav_path',
-        '/Android/data/${com.huolala.mockgps.BuildConfig.APPLICATION_ID}/files/nav_path'))
+        '/Android/data/com.yadea.smartmoto/files/nav_path',
+        '/Android/data/${com.yadea.smartmoto.BuildConfig.APPLICATION_ID}/files/nav_path'))
 Path('gradlew').chmod(Path('gradlew').stat().st_mode | 0o111)
 print('App display name:', app_name)
 print('Prepared package:', application_id)

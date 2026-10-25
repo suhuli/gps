@@ -2,11 +2,11 @@
 
 ## 构建身份
 
-- 默认安装包名：`com.yadea.smartmoto`，源码 namespace：`com.huolala.mockgps`。
+- 默认安装包名：`com.yadea.smartmoto`，源码 namespace：`com.yadea.smartmoto`。
 - 固定证书 SHA-1：`DB:08:33:1A:25:37:F2:BC:72:0D:54:A8:17:2B:E5:38:89:AF:89:95`。
 - debug / release 使用同一已有证书。不得重新生成签名或使用原作者的密钥。
 - 固定密钥缺失时，APK 打包失败，不回退到随机 debug 签名。
-- 版本：2.6.0-beta1 / versionCode 259。仅作为待真机验证的测试版本。
+- 版本：2.6.0-beta2 / versionCode 260。仅作为待真机验证的测试版本。
 
 ## SDK 和工具链（2026-10-25 锁定）
 
@@ -86,7 +86,7 @@ ANDROID_KEY_PASSWORD
 - 文件导入支持系统文件选择器或应用内文件列表，单文件最多 5 MB / 50000 点；完整校验成功后才替换路线。支持 `经度,纬度;经度,纬度;` 格式及 UTF-8 BOM。
 - 模拟通过前台服务运行，通知提供暂停/继续/停止。系统仍可能受厂商电池管理策略限制。
 - 不再申请手机状态、全部应用列表、系统日志或“始终允许”的后台定位权限；启动位置前台服务仍需精确位置授权。Android 13+ 建议允许通知。
-- 外部广播保留原 action，但新增 `${applicationId}.permission.CONTROL_MOCK_LOCATION` 签名级权限。外部应用必须同签名并声明该权限；仍受 Android 后台启动限制，不保证旧的任意应用广播或 adb 命令兼容。
+- 外部广播 action 使用实际安装包名 + `.navi`（默认 `com.yadea.smartmoto.navi`），并要求 `${applicationId}.permission.CONTROL_MOCK_LOCATION` 签名级权限。外部应用必须同签名并声明该权限；仍受 Android 后台启动限制，不保证旧的任意应用广播或 adb 命令兼容。
 - 原作者 Bugly 上报和原作者应用更新通道已停用。没有新建任何遥测服务器。
 - 撤回隐私同意会停止模拟、清除本应用地点历史和地图偏好、退出进程；已导入和保存的轨迹文件不会自动删除。第三方服务已处理的数据应按相应政策联系服务方处理。
 
@@ -99,3 +99,13 @@ ANDROID_KEY_PASSWORD
 ## 原作者声明
 
 保留原项目作者署名、历史和 README 中的使用/分发限制；本次修改不新增 MIT、Apache 等宽松许可，也不改变原项目授权条件。公开仓库不代表允许任意分发或商业使用。
+
+## beta2 清理与百度鉴权
+
+源码 namespace、Java/Kotlin 包路径、Manifest 组件、XML 自定义视图和测试统一为 `com.yadea.smartmoto`。默认 applicationId 和固定证书不变，无须因为源码迁移更换地图 Key 的包名或 SHA-1。广播调用方须改用新 action；不再注册旧 action。
+
+原作者版本检查 API、响应模型、HTTP 客户端、更新按钮/图标/弹窗和旧下载链接/二维码已从当前源码移除；扩展页不再列出 GitHub 地址或 APK 下载地址。原作者署名、许可证/使用限制和 Git 历史保留。
+
+百度官方错误码：240 = APP 服务被禁用；230 = APP Mcode 校验失败。240 优先检查百度控制台该 AK 的 Android SDK 应用类型、应用是否启用、相关服务权限，不通过改源码 namespace 或更换固定签名来规避服务授权。控制台服务开通后先完全退出并重启应用复测；若换了 AK，需要重新构建。
+
+官方错误码说明：https://lbsyun.baidu.com/docs/android?title=androidsdk/guide/addition-func/errorcode

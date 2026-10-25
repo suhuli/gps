@@ -76,7 +76,7 @@
         app:layout_constraintTop_toTopOf="@id/card" />
 
 
-    <com.huolala.mockgps.widget.FloatingCardView
+    <com.yadea.smartmoto.widget.FloatingCardView
         android:id="@+id/card"
         android:layout_width="100dp"
         android:layout_height="100dp"
@@ -87,12 +87,12 @@
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <com.huolala.mockgps.maps.ProviderMapView
+        <com.yadea.smartmoto.maps.ProviderMapView
             android:id="@+id/mapview"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-    </com.huolala.mockgps.widget.FloatingCardView>
+    </com.yadea.smartmoto.widget.FloatingCardView>
 
     <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/iv_setting"
