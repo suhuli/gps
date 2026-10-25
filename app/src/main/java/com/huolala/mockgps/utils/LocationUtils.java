@@ -162,6 +162,9 @@ public class LocationUtils {
     }
 
     private static boolean outOfChina(double lng, double lat) {
-        return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
+        // Conservative mainland/Hainan bounding box, not an administrative boundary.
+        // The previous 0.8293 southern limit incorrectly shifted Singapore/Malaysia.
+        // Border regions still need provider/device validation; do not use this as a legal geofence.
+        return lng < 72.004 || lng > 137.8347 || lat < 18.0 || lat > 55.8271;
     }
 }

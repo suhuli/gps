@@ -9,7 +9,7 @@ apks = list(Path(f'app/build/outputs/apk/{variant}').glob('*.apk'))
 if len(apks) != 1:
     raise SystemExit(f'Expected one installable APK, found {len(apks)}')
 apk = apks[0]
-tools = Path(os.environ['ANDROID_HOME']) / 'build-tools/30.0.3'
+tools = Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'
 signing = subprocess.check_output([str(tools / 'apksigner'), 'verify', '--verbose', '--print-certs', str(apk)], text=True)
 badging = subprocess.check_output([str(tools / 'aapt'), 'dump', 'badging', str(apk)], text=True)
 match = re.search(r"^package: name='([^']+)'", badging, re.M)
@@ -25,7 +25,8 @@ if not sha1 or sha1.group(1).lower() != expected:
 
 out = Path('artifacts')
 out.mkdir(exist_ok=True)
-name = f"yadea-smartmoto-{os.environ['APPLICATION_ID']}-{os.environ['SOURCE_BRANCH']}-{variant}.apk"
+source_slug = os.environ['SOURCE_BRANCH'].replace('/', '-')
+name = f"yadea-smartmoto-{os.environ['APPLICATION_ID']}-{source_slug}-{variant}.apk"
 (out / name).write_bytes(apk.read_bytes())
 (out / 'signing-certificate.txt').write_text(signing)
 info = '\n'.join([
@@ -35,7 +36,7 @@ info = '\n'.join([
     'Build type: ' + variant,
     'Signing SHA-1: ' + os.environ['EXPECTED_SIGNING_SHA1'],
     next(line for line in badging.splitlines() if line.startswith('package:')),
-    'Map/search/routing require a valid Baidu Key registered for this package and certificate.',
+    'Baidu and AMap each require an Android Key registered for this package and certificate. Native SDKs: Baidu Map/Search 8.2.0.2, Location 9.7.0; AMap Map 11.3.100 / Location 11.3.101 / Search 9.8.1.',
 ]) + '\n'
 (out / 'BUILD-INFO.txt').write_text(info)
 print(info)

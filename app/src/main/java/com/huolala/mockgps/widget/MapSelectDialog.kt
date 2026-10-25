@@ -6,8 +6,8 @@ import android.view.Gravity
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
-import com.baidu.mapapi.map.BaiduMap
-import com.baidu.mapapi.map.Overlay
+import com.huolala.mockgps.maps.ProviderMap as BaiduMap
+import com.huolala.mockgps.maps.MapOverlay as Overlay
 import com.baidu.mapapi.model.LatLng
 import com.baidu.mapapi.search.route.DrivingRouteLine
 import com.blankj.utilcode.util.ClickUtils
@@ -18,19 +18,20 @@ import com.huolala.mockgps.R
 import com.huolala.mockgps.manager.utils.MapConvertUtils
 import com.huolala.mockgps.manager.utils.MapDrawUtils
 import com.huolala.mockgps.model.PoiInfoModel
-import kotlinx.android.synthetic.main.dialog_select_navi_map.*
+import com.huolala.mockgps.model.RouteLines
 
 /**
  * @author jiayu.liu
  */
 class MapSelectDialog(
     context: Context,
-    private var routeLines: List<DrivingRouteLine>,
+    private var routeLines: List<RouteLines>,
     private var start: LatLng?,
     private var end: LatLng?,
     wayList: MutableList<PoiInfoModel>?
 ) : BaseDialog(context) {
 
+    private val binding = com.huolala.mockgps.databinding.DialogSelectNaviMapBinding.inflate(layoutInflater)
     private val mHorizontalPadding = ConvertUtils.dp2px(20f)
     private val mMapPadding = ConvertUtils.dp2px(30f)
     private val screenWidth = ScreenUtils.getScreenWidth()
@@ -41,15 +42,12 @@ class MapSelectDialog(
     init {
         requestWindowFeature(Window.FEATURE_NO_TITLE)
 
-        layoutInflater.inflate(R.layout.dialog_select_navi_map, null, false).apply {
-            setContentView(this)
-        }
+        setContentView(binding.root)
 
-        texture_mapview.onCreate(context, null)
-        texture_mapview.showScaleControl(false)
-        texture_mapview.showZoomControls(false)
-        texture_mapview.getChildAt(1).visibility = View.GONE
-        texture_mapview.map?.let {
+        binding.textureMapview.onCreate(context, null)
+        binding.textureMapview.showScaleControl(false)
+        binding.textureMapview.showZoomControls(false)
+        binding.textureMapview.map?.let {
             it.uiSettings?.isCompassEnabled = false
             it.uiSettings?.setAllGesturesEnabled(false)
             //渲染路线
@@ -68,13 +66,13 @@ class MapSelectDialog(
                 drawLine(it)
             }
         }
-        ClickUtils.applySingleDebouncing(btn_change) {
+        ClickUtils.applySingleDebouncing(binding.btnChange) {
             mainIndex = ++mainIndex % routeLines.size
-            texture_mapview.map?.let {
+            binding.textureMapview.map?.let {
                 drawLine(it)
             }
         }
-        ClickUtils.applySingleDebouncing(btn_select) {
+        ClickUtils.applySingleDebouncing(binding.btnSelect) {
             listener?.onSelectLine(routeLines[mainIndex])
             dismiss()
         }
@@ -100,7 +98,7 @@ class MapSelectDialog(
         routeLines.mapIndexed { index, line ->
             MapDrawUtils.drawLineToMap(
                 baiduMap,
-                MapConvertUtils.convertLatLngList(line),
+                line.route,
                 Rect(mMapPadding, mMapPadding, mMapPadding, mMapPadding),
                 index == mainIndex
             )?.let { overlay ->
@@ -109,20 +107,26 @@ class MapSelectDialog(
         }
     }
 
+    override fun show() {
+        super.show()
+        binding.textureMapview.onResume()
+    }
+
     public fun onResume() {
-        texture_mapview.onResume()
+        binding.textureMapview.onResume()
     }
 
     public fun onPause() {
-        texture_mapview.onPause()
+        binding.textureMapview.onPause()
     }
 
     override fun dismiss() {
-        texture_mapview.onDestroy()
+        binding.textureMapview.onPause()
+        binding.textureMapview.onDestroy()
         super.dismiss()
     }
 
     interface MapSelectDialogListener {
-        fun onSelectLine(routeLine: DrivingRouteLine)
+        fun onSelectLine(routeLine: RouteLines)
     }
 }

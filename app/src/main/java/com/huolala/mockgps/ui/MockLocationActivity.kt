@@ -5,7 +5,9 @@ import android.graphics.Rect
 import android.os.*
 import android.view.View
 import android.widget.Toast
-import com.baidu.mapapi.map.*
+import com.huolala.mockgps.maps.ProviderMap as BaiduMap
+import com.huolala.mockgps.maps.MapStatus
+import com.huolala.mockgps.maps.MapStatusUpdateFactory
 import com.blankj.utilcode.util.ClickUtils
 import com.blankj.utilcode.util.ConvertUtils
 import com.castiel.common.base.BaseActivity
@@ -20,7 +22,6 @@ import com.huolala.mockgps.model.MockMessageModel
 import com.huolala.mockgps.model.NaviType
 import com.huolala.mockgps.server.GpsService
 import com.huolala.mockgps.utils.Utils
-import kotlinx.android.synthetic.main.activity_navi.*
 
 
 /**
@@ -42,13 +43,16 @@ class MockLocationActivity : BaseActivity<ActivityNaviBinding, BaseViewModel>(),
     }
 
     override fun initView() {
-        ClickUtils.applySingleDebouncing(iv_back, this)
+        ClickUtils.applySingleDebouncing(dataBinding.ivBack, this)
 
-        mBaiduMap = mapview.map
-        mapview.showScaleControl(false)
-        mapview.showZoomControls(false)
+        mBaiduMap = dataBinding.mapview.map
+        dataBinding.mapview.showScaleControl(false)
+        dataBinding.mapview.showZoomControls(false)
         mBaiduMap.uiSettings?.isCompassEnabled = false
 
+        GpsService.currentLocation.observe(this) { point ->
+            point?.let { mapLocationManager?.displayPoint(it) }
+        }
         mBaiduMap.setOnMapLoadedCallback {
             startMock()
         }
@@ -68,7 +72,8 @@ class MockLocationActivity : BaseActivity<ActivityNaviBinding, BaseViewModel>(),
             mapLocationManager = MapLocationManager(
                 this@MockLocationActivity,
                 mBaiduMap,
-                if (mNaviType == NaviType.LOCATION) FollowMode.MODE_PERSISTENT else FollowMode.MODE_NONE
+                if (mNaviType == NaviType.LOCATION) FollowMode.MODE_PERSISTENT else FollowMode.MODE_NONE,
+                com.huolala.mockgps.manager.Source.SIMULATED
             )
             when (naviType) {
                 NaviType.LOCATION -> {
@@ -142,37 +147,32 @@ class MockLocationActivity : BaseActivity<ActivityNaviBinding, BaseViewModel>(),
             }
         }
         //启动服务  定位以及悬浮窗
-        startService(Intent(this, GpsService::class.java).apply {
-            parcelable?.let {
-                putExtras(
-                    Bundle().apply {
-                        putParcelable("info", it)
-                    })
-            }
-        })
+        (parcelable as? MockMessageModel)?.let { GpsService.start(this, it) }
     }
 
     override fun onResume() {
         super.onResume()
-        mapview.onResume()
+        dataBinding.mapview.onResume()
     }
 
     override fun onPause() {
         super.onPause()
-        mapview.onPause()
-        if (isFinishing) {
-            destroy()
-        }
+        dataBinding.mapview.onPause()
+    }
+
+    override fun onDestroy() {
+        destroy()
+        super.onDestroy()
     }
 
     private fun destroy() {
         mapLocationManager?.onDestroy()
-        mapview.onDestroy()
+        dataBinding.mapview.onDestroy()
     }
 
     override fun onClick(v: View?) {
         when (v) {
-            iv_back -> {
+            dataBinding.ivBack -> {
                 finish()
             }
 

@@ -19,11 +19,11 @@ import com.huolala.mockgps.model.MockMessageModel
 import com.huolala.mockgps.model.NaviType
 import com.huolala.mockgps.model.PoiInfoModel
 import com.huolala.mockgps.model.PoiInfoType
+import com.huolala.mockgps.model.RouteLines
 import com.huolala.mockgps.server.GpsService
 import com.huolala.mockgps.utils.LocationUtils
 import com.huolala.mockgps.utils.MMKVUtils
 import com.huolala.mockgps.utils.Utils
-import kotlinx.android.synthetic.main.layout_navi_card.radio_multi_route
 
 /**
  * @author jiayu.liu
@@ -41,12 +41,16 @@ class MockReceiver : BroadcastReceiver() {
 
     companion object {
         var MOCK_ACTION = "com.huolala.mockgps.navi"
+        const val CAR = "car"
+        const val BICYCLE = "bicycle"
+        const val ELECTRIC_BICYCLE = "electricBicycle"
     }
 
     override fun onReceive(context: Context?, intent: Intent) {
         if (context == null) {
             return
         }
+        if (!com.huolala.mockgps.maps.MapPreferences.consented(context)) return
         val action = intent.action
         if (MOCK_ACTION != action) {
             return
@@ -54,15 +58,16 @@ class MockReceiver : BroadcastReceiver() {
         val event = intent.getStringExtra("event")
         when (event) {
             "stopNavi" -> {
-                FloatingViewManger.INSTANCE.stopMockFromReceiver()
+                context.stopService(Intent(context, GpsService::class.java))
                 return
             }
+
             else -> {}
         }
         val start = intent.getStringExtra("start")
         val end = intent.getStringExtra("end")
         val type = intent.getStringExtra("type") ?: LocationUtils.gcj02
-        LogUtils.dTag("mock", "mockGps接收到模拟定位广播-> start=$start , end=$end , type=$type")
+        val routeType = intent.getStringExtra("planType") ?: CAR
         Utils.checkFloatWindow(context).let {
             if (!it) {
                 ToastUtils.showShort("悬浮窗权限未开启，请返回app开启权限！")
@@ -77,6 +82,10 @@ class MockReceiver : BroadcastReceiver() {
 
             try {
                 start!!.split(",").apply {
+                    require(size == 2)
+                    val rawLng = get(0).toDouble()
+                    val rawLat = get(1).toDouble()
+                    require(rawLng.isFinite() && rawLat.isFinite() && rawLng in -180.0..180.0 && rawLat in -90.0..90.0)
                     startLatLng = when (type) {
                         LocationUtils.bd09 -> {
                             val bd09ToGcj02 =
@@ -96,6 +105,10 @@ class MockReceiver : BroadcastReceiver() {
                     }
                 }
                 end!!.split(",").apply {
+                    require(size == 2)
+                    val rawLng = get(0).toDouble()
+                    val rawLat = get(1).toDouble()
+                    require(rawLng.isFinite() && rawLat.isFinite() && rawLng in -180.0..180.0 && rawLat in -90.0..90.0)
                     endLatLng = when (type) {
                         LocationUtils.bd09 -> {
                             val wgs84ToGcj02 =
@@ -117,6 +130,7 @@ class MockReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+            if (type !in listOf(LocationUtils.bd09, LocationUtils.gcj02, LocationUtils.gps84)) return
             if (startLatLng == null || endLatLng == null) {
                 return
             }
@@ -139,8 +153,10 @@ class MockReceiver : BroadcastReceiver() {
                 uid = ""
             )
 
-            SearchManager.INSTANCE.addSearchManagerListener(object : SearchManager.SearchManagerListener {
-                override fun onDrivingRouteResultLines(routeLines: List<DrivingRouteLine>?) {
+            SearchManager.INSTANCE.addSearchManagerListener(object :
+                SearchManager.SearchManagerListener {
+                override fun onRouteResultLines(routeLines: List<RouteLines>?) {
+                    SearchManager.INSTANCE.removeSearchManagerListener(this)
                     if (routeLines?.isEmpty() != false) {
                         ToastUtils.showShort("路线规划数据获取失败,请检测网络or数据是否正确!")
                         return
@@ -152,11 +168,33 @@ class MockReceiver : BroadcastReceiver() {
                 }
             })
 
-            SearchManager.INSTANCE.driverSearch(
-                startLatLng,
-                endLatLng,
-                true
-            )
+            when (routeType) {
+                BICYCLE -> {
+                    SearchManager.INSTANCE.bikingSearch(
+                        startLatLng,
+                        endLatLng,
+                        wayList = null,
+                        ridingType = 0
+                    )
+                }
+
+                ELECTRIC_BICYCLE -> {
+                    SearchManager.INSTANCE.bikingSearch(
+                        startLatLng,
+                        endLatLng,
+                        wayList = null,
+                        ridingType = 1
+                    )
+                }
+
+                else -> {
+                    SearchManager.INSTANCE.driverSearch(
+                        startLatLng,
+                        endLatLng,
+                        true
+                    )
+                }
+            }
         }
     }
 
@@ -174,15 +212,6 @@ class MockReceiver : BroadcastReceiver() {
             }
         }
         //启动服务  定位以及悬浮窗
-        context.startService(Intent(context, GpsService::class.java).apply {
-            parcelable?.let {
-                putExtras(
-                    Bundle().apply {
-                        putParcelable("info", it)
-                    })
-            }
-        })
+        parcelable?.let { GpsService.start(context, it) }
     }
-
-
 }

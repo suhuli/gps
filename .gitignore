@@ -14,3 +14,12 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+/artifacts/
+*.p12
+*.jks
+*.keystore
+/private/
+
+__pycache__/
+*.py[cod]

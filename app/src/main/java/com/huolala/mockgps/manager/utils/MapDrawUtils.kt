@@ -1,76 +1,25 @@
 package com.huolala.mockgps.manager.utils
 
-import android.R
 import android.graphics.Rect
-import android.text.TextUtils
-import com.baidu.mapapi.map.BaiduMap
-import com.baidu.mapapi.map.BitmapDescriptorFactory
-import com.baidu.mapapi.map.MapStatusUpdateFactory
-import com.baidu.mapapi.map.MarkerOptions
-import com.baidu.mapapi.map.Overlay
-import com.baidu.mapapi.map.OverlayOptions
-import com.baidu.mapapi.map.PolylineOptions
 import com.baidu.mapapi.model.LatLng
 import com.baidu.mapapi.model.LatLngBounds
+import com.huolala.mockgps.maps.ProviderMap
+import com.huolala.mockgps.maps.MapOverlay
+import com.huolala.mockgps.maps.MapStatusUpdateFactory
 
-
-/**
- * @author jiayu.liu
- */
 object MapDrawUtils {
-
-    fun drawMarkerToMap(baiduMap: BaiduMap, point: LatLng, assetName: String) {
-        if (TextUtils.isEmpty(assetName)) {
-            return
-        }
-        val bitmap = BitmapDescriptorFactory
-            .fromAsset(assetName)
-        val option: OverlayOptions = MarkerOptions()
-            .position(point)
-            .icon(bitmap)
-            .zIndex(2)
-        baiduMap.addOverlay(option)
-
+    fun drawMarkerToMap(map: ProviderMap, point: LatLng, assetName: String) {
+        if (assetName.isNotEmpty()) map.marker(point, assetName)
     }
-
-    fun drawLineToMap(
-        baiduMap: BaiduMap,
-        polylineList: List<LatLng>,
-        rect: Rect,
-        isMainLine: Boolean = true,
-        animateMapStatus: Boolean = true
-    ): Overlay? {
-        if (polylineList.isEmpty()) {
-            return null
-        }
-
-        val mOverlayOptions: OverlayOptions = PolylineOptions()
-            .width(30)
-            .keepScale(true)
-            .customTexture(
-                BitmapDescriptorFactory.fromAsset(
-                    if (isMainLine)
-                        "navi_lbs_texture.png"
-                    else
-                        "navi_lbs_texture_unselected.png"
-                )
-            )
-            .lineJoinType(PolylineOptions.LineJoinType.LineJoinRound)
-            .lineCapType(PolylineOptions.LineCapType.LineCapRound)
-            .points(polylineList)
-            .zIndex(if (isMainLine) 1 else 0)
-        val addOverlay = baiduMap.addOverlay(mOverlayOptions)
+    fun drawLineToMap(map: ProviderMap, polylineList: List<LatLng>, rect: Rect,
+                      isMainLine: Boolean = true, animateMapStatus: Boolean = true): MapOverlay? {
+        if (polylineList.isEmpty()) return null
+        val overlay = map.line(polylineList, isMainLine)
         if (isMainLine && animateMapStatus) {
-            baiduMap.animateMapStatus(
-                MapStatusUpdateFactory.newLatLngBounds(
-                    LatLngBounds.Builder().include(polylineList).build(),
-                    rect.left,
-                    rect.top,
-                    rect.right,
-                    rect.bottom
-                )
-            )
+            if (polylineList.size == 1) map.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(polylineList[0], 16f))
+            else map.animateMapStatus(MapStatusUpdateFactory.newLatLngBounds(
+                LatLngBounds.Builder().include(polylineList).build(), rect.left, rect.top, rect.right, rect.bottom))
         }
-        return addOverlay
+        return overlay
     }
 }

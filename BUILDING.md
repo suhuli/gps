@@ -1,61 +1,101 @@
-# 使用 GitHub Actions 构建自定义包名 APK
+# 雅迪智行：双地图构建说明
 
-进入 **Actions → Build Android APK → Run workflow**：
+## 构建身份
 
-| 输入项 | 默认值 | 说明 |
-|---|---|---|
-| 工作流分支 | `main` | 保留 main，以使用本仓库的构建脚本 |
-| `source_branch` | `dev` | 选择 dev（2.5.8）或 main（2.5.5）源码 |
-| `application_id` | `com.yadea.smartmoto` | 自定义 Android 包名，使用小写字母、数字、下划线和点；每段以字母开头 |
-| `baidu_map_key` | 留空 | 构建时填入百度地图 Android Key；优先于仓库 Secret |
-| `build_type` | `release` | release 或 debug，均使用同一份固定专用签名 |
+- 默认安装包名：`com.yadea.smartmoto`，源码 namespace：`com.huolala.mockgps`。
+- 固定证书 SHA-1：`DB:08:33:1A:25:37:F2:BC:72:0D:54:A8:17:2B:E5:38:89:AF:89:95`。
+- debug / release 使用同一已有证书。不得重新生成签名或使用原作者的密钥。
+- 固定密钥缺失时，APK 打包失败，不回退到随机 debug 签名。
+- 版本：2.6.0-beta1 / versionCode 259。仅作为待真机验证的测试版本。
 
-构建完成后，在该运行页面的 **Artifacts** 下载 ZIP，其中包含：
-- APK（显示名称：**雅迪智行**）
-- `BUILD-INFO.txt`：实际包名、源码分支、构建类型、SHA-1
-- `signing-certificate.txt`：APK 实际签名证书指纹
+## SDK 和工具链（2026-10-25 锁定）
 
-Artifacts 保留 14 天，不自动发布 Release。
+| 组件 | 版本 |
+| --- | --- |
+| 百度地图 / 搜索 | 8.2.0.2 |
+| 百度定位 | 9.7.0 |
+| 高德三合一 Maven 包 | 11.3.100_loc11.3.101_sea9.8.1 |
+| MMKV（保留 API 21 支持的 1.x 分支） | 1.3.17 |
+| Android Gradle Plugin | 8.6.1 |
+| Gradle | 8.7 |
+| Kotlin | 1.9.25 |
+| 构建 JDK | 17 |
+| compileSdk / targetSdk | 35 / 35 |
+| minSdk | 21 |
 
-## 固定签名与 SHA-1
+高德组合包仅提供 ARM 原生库，因此本版本只输出 `armeabi-v7a` 和 `arm64-v8a`；不声称支持 x86 模拟器。Kotlin Android Extensions 已移除，改用 DataBinding / ViewBinding；不再依赖 FreeReflection，不再修改用户的动画缩放设置。
 
-本项目已经配置独立的持久签名，私钥和密码只保存为 Actions Secrets，不提交到公开代码。
+## Actions
 
-```text
-SHA-1: DB:08:33:1A:25:37:F2:BC:72:0D:54:A8:17:2B:E5:38:89:AF:89:95
+工作流和辅助脚本必须一并更新，再构建已同步的源分支；旧 main/dev 源码不能直接套用新版配置脚本。
+
+在 **Build Android APK → Run workflow** 中选择源分支、包名、构建类型，可填写：
+
+- `baidu_map_key`：百度 Android Key；留空读取 `BAIDU_MAP_KEY` Secret。
+- `amap_map_key`：高德 Android Key；留空读取 `AMAP_MAP_KEY` Secret。
+
+两家 Key 分别绑定真实包名和上面的固定签名。若平台区分调试和发布证书，两项均填相同 SHA-1。输入优先于 Secret；没有 Key 时不使用原作者的 Key，应用选择对应地图时会提示重新配置。
+
+**手动输入框不是 Secret。** 虽然辅助脚本遮罩日志且不把 Key 提交到 Git，运行参数、事件文件及 APK 中的 Key 仍可能被读取。优先用仓库 Secret，并在平台限制 API 权限、配额，验证后更换临时 Key。
+
+已有四个签名 Secrets 保持原值：
+
+```
+ANDROID_KEYSTORE_BASE64
+ANDROID_KEYSTORE_PASSWORD
+ANDROID_KEY_ALIAS
+ANDROID_KEY_PASSWORD
 ```
 
-SHA-1 由证书决定，不能任意输入。修改包名、切换 main/dev 或 debug/release 不会改变本证书指纹。
-构建会核对 APK 的实际包名和 SHA-1；签名 Secrets 缺失时直接失败，不生成临时替代签名。
+构建会执行坐标转换和轨迹解析单元测试；验证实际 APK 名称、包名、固定证书、ARM64 ELF LOAD 对齐和 ZIP 16 KB 对齐。这些检查不能代替手机执行测试。
 
-签名 Secrets 为：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。
-不要随意删除或替换。私钥文件和密码应另外安全离线备份。APK 下载包不含私钥或密码。
-若确实需要换用你已有的签名，需同时替换这四个 Secrets，并更新工作流的预期证书指纹。
+本地沙箱内存仅约 2 GB，首个 beta 的本地打包排除了 Lint Vital 分析任务；不把它宣称为 Lint 通过。Actions 未排除 Lint，并为 Gradle 提供 3 GB 堆，但远端执行仍需有效仓库写入授权与实际运行验证。
 
-## 百度地图 Key
+## 本地构建
 
-APK 编译成功不代表地图、搜索、算路一定能用。
-在百度控制台按**本次自定义包名 + 上述 SHA-1**申请/配置 Android Key。默认包名为 `com.yadea.smartmoto`。
+安装 JDK 17、Android Platform 35、Build Tools 35.0.0，配置 `ANDROID_HOME` 或 `local.properties`。
 
-可以直接在 Run workflow 的 `baidu_map_key` 输入框填写；留空时读取仓库 Secret：
+通过进程环境设置两个地图 Key 和已有签名文件，不要把配置值写入源码：
 
-**Settings → Secrets and variables → Actions → New repository secret → `BAIDU_MAP_KEY`**。
+```
+BAIDU_MAP_KEY
+AMAP_MAP_KEY
+GPS_KEYSTORE_PATH
+ANDROID_KEYSTORE_PASSWORD
+ANDROID_KEY_ALIAS
+ANDROID_KEY_PASSWORD
+```
 
-**安全说明：输入框不是 Secret。工作流会对使用的 Key 设置日志遮罩，但输入参数可能通过 GitHub 的运行数据被读取，Key 也会被写入 APK，不能保证保密。敏感 Key 建议存入 Secret 并限制其百度 API 权限与配额。输入的 Key 不会提交到 Git 源码。**
+然后执行：
 
-输入框和 Secret 都未配置时会保留上游源码中的 Key，但它通常不能匹配新包名和新证书。切换包名后应同步调整地图 Key。
-原作者的签名文件不用于本工作流的 APK 签名。
+```sh
+./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease
+```
 
-## 安装及兼容性
+## 使用与能力边界
 
-- 相同包名、相同证书：满足 Android 的版本号等条件时可覆盖安装更新。
-- 不同包名：视为不同应用，通常可共存，应用数据不自动迁移。
-- 与原作者 APK 或此前临时调试签名不同：相同包名时无法直接覆盖安装，可能需先卸载旧版本。
-- 这里只更改安装包 applicationId，代码 namespace 保留原值，避免破坏资源及代码引用。
-- 应用内部的广播 action 仍兼容原项目；自动化调用时可通过目标包名限制接收应用。
-- API 31、Gradle 7.0.2、AGP 7.0.4、Java 11 构建；Android SDK 工具安装使用 Java 17。
-- 不包含真机验证，外部依赖仓库不可用时仍可能构建失败。
+- 首次启动先阅读隐私说明，用户同意后再初始化所选地图服务。未选择地图不创建地图渲染器或位置客户端。
+- 启动可选择百度或高德并勾选“记住选择”；扩展 → 模拟功能设置可重新切换。
+- 切换地图会停止现有模拟并清空当前路线，历史地点保留。
+- 地图主界面、选点搜索、逆地理编码、路线选择、路线生成、模拟页和悬浮窗均使用同一所选服务。
+- 长按导航按钮可选择驾车、普通骑行、步行、电动车。
+- 高德原生 Android 搜索 SDK 无电动车专用算路接口：高德电动车请求会明确拒绝，要求改用普通骑行或百度电动车模式，不会静默替换路线类型。
+- 高德普通骑行和步行途经点按段串联；百度步行不支持本实现的途经点，明确提示移除。
+- 境外转换判断修复了新加坡/马来西亚误偏移，但当前仍是大陆/海南粗略范围判断，不是精确行政边界；边境地区和其他相邻国家必须单独核对，不宣称全球坐标转换已完全准确。
+- 内部路线统一为 GCJ-02，仅写入系统模拟位置前转换为 WGS84；已有历史和输入模型暂保留百度 `LatLng` 作为兼容数据容器，不代表调用百度地图服务。
+- 文件导入支持系统文件选择器或应用内文件列表，单文件最多 5 MB / 50000 点；完整校验成功后才替换路线。支持 `经度,纬度;经度,纬度;` 格式及 UTF-8 BOM。
+- 模拟通过前台服务运行，通知提供暂停/继续/停止。系统仍可能受厂商电池管理策略限制。
+- 不再申请手机状态、全部应用列表、系统日志或“始终允许”的后台定位权限；启动位置前台服务仍需精确位置授权。Android 13+ 建议允许通知。
+- 外部广播保留原 action，但新增 `${applicationId}.permission.CONTROL_MOCK_LOCATION` 签名级权限。外部应用必须同签名并声明该权限；仍受 Android 后台启动限制，不保证旧的任意应用广播或 adb 命令兼容。
+- 原作者 Bugly 上报和原作者应用更新通道已停用。没有新建任何遥测服务器。
+- 撤回隐私同意会停止模拟、清除本应用地点历史和地图偏好、退出进程；已导入和保存的轨迹文件不会自动删除。第三方服务已处理的数据应按相应政策联系服务方处理。
 
-## 授权
+## 必须执行的真机验收
 
-公开可见不等于获得宽松开源授权。原项目 README 的作者声明、使用与分发限制不变；本仓库没有新增 MIT/Apache 等许可证。
+分别检查两张地图的有效 Key、网络断开、搜索和逆地理编码、各路线类型与途经点、路线切换、文件导入、锁屏与返回前台、通知操作、撤回权限、两家服务反复切换、旧版本同签名升级、ARM64 16 KB 页大小设备。编译成功不是这些功能已通过验收。
+
+本阶段没有声称完成所有 UI 组件的全面升级、应用商店审核、完整第三方隐私合规审计或模拟定位识别规避。部分非核心旧 UI 依赖暂保留，以控制双地图升级风险。
+
+## 原作者声明
+
+保留原项目作者署名、历史和 README 中的使用/分发限制；本次修改不新增 MIT、Apache 等宽松许可，也不改变原项目授权条件。公开仓库不代表允许任意分发或商业使用。

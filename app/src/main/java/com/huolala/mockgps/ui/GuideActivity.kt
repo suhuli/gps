@@ -19,7 +19,6 @@ import com.huolala.mockgps.R
 import com.huolala.mockgps.databinding.ActivityGuideBinding
 import com.huolala.mockgps.server.GpsService
 import com.huolala.mockgps.utils.Utils
-import kotlinx.android.synthetic.main.activity_guide.*
 import java.lang.Exception
 
 /**
@@ -33,6 +32,7 @@ class GuideActivity : BaseActivity<ActivityGuideBinding, BaseViewModel>(), View.
 
     private val permissions: Array<String> = arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
     )
 
 
@@ -45,7 +45,7 @@ class GuideActivity : BaseActivity<ActivityGuideBinding, BaseViewModel>(), View.
     }
 
     override fun initView() {
-        ClickUtils.applySingleDebouncing(btn_go, this)
+        ClickUtils.applySingleDebouncing(dataBinding.btnGo, this)
     }
 
     override fun initData() {
@@ -98,16 +98,7 @@ class GuideActivity : BaseActivity<ActivityGuideBinding, BaseViewModel>(), View.
                         return
                     }
                 }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    //申请后台定位权限
-                    if (checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                        Toast.makeText(this, "推荐始终允许定位，方便后台定位功能正常", Toast.LENGTH_LONG).show()
-                        requestPermissions(
-                            arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
-                            PERMISSION_BACKGROUND_REQUEST
-                        )
-                    }
-                }
+
             }
 
             else -> {}
@@ -116,9 +107,16 @@ class GuideActivity : BaseActivity<ActivityGuideBinding, BaseViewModel>(), View.
 
     override fun onClick(v: View?) {
         when (v) {
-            btn_go -> {
+            dataBinding.btnGo -> {
                 //权限
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !checkPermission()) {
+                    return
+                }
+                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+                    !getPreferences(MODE_PRIVATE).getBoolean("notification_asked", false)) {
+                    getPreferences(MODE_PRIVATE).edit().putBoolean("notification_asked", true).apply()
+                    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1003)
+                    ToastUtils.showLong("建议允许通知，以便暂停或停止后台模拟；授权后请再次点击进入")
                     return
                 }
                 //模拟导航设置
@@ -143,7 +141,6 @@ class GuideActivity : BaseActivity<ActivityGuideBinding, BaseViewModel>(), View.
                         .show()
                     return
                 }
-                startService(Intent(this, GpsService::class.java))
                 startActivity(Intent(this, MainActivity::class.java))
                 finish()
             }

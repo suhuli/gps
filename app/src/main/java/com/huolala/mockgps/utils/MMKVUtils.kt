@@ -28,6 +28,7 @@ object MMKVUtils {
 
     //模拟定位震动功能范围，默认：10m
     const val KEY_LOCATION_VIBRATION_VALUE: String = "KEY_LOCATION_VIBRATION_VALUE"
+
     //模拟定位震动功能频率，默认：10s
     const val KEY_LOCATION_FREQUENCY_VALUE: String = "key_location_frequency_value"
 
@@ -73,6 +74,18 @@ object MMKVUtils {
         defaultMMKV.remove(key)
     }
 
+    fun removeDataList(key: String, position: Int): CopyOnWriteArrayList<MockMessageModel>? {
+        getDataList(key)?.run {
+            if (size > position) {
+                removeAt(position)
+                defaultMMKV.putString(key, Gson().toJson(this))
+                return this
+            }
+        }
+        return null
+    }
+
+
     private fun checkMockMessageModelIsExist(
         dataList: CopyOnWriteArrayList<MockMessageModel>,
         data: MockMessageModel
@@ -89,14 +102,14 @@ object MMKVUtils {
      * 设置导航速度
      */
     fun setSpeed(speed: Int) {
-        defaultMMKV.putInt(NAVI_SPEED_KEY, speed)
+        defaultMMKV.putInt(NAVI_SPEED_KEY, speed.coerceIn(1, 300))
     }
 
     /**
      * 获取导航速度
      */
     fun getSpeed(): Int {
-        return defaultMMKV.getInt(NAVI_SPEED_KEY, 60)
+        return defaultMMKV.getInt(NAVI_SPEED_KEY, 60).coerceIn(1, 300)
     }
 
     /**
@@ -111,6 +124,21 @@ object MMKVUtils {
      */
     fun isGuideVisible(): Boolean {
         return defaultMMKV.getBoolean("isGuideVisible", false)
+    }
+
+
+    /**
+     * 导航按钮引导展示标识
+     */
+    fun setNaviGuideVisible(visible: Boolean) {
+        defaultMMKV.putBoolean("isNaviGuideVisible", visible)
+    }
+
+    /**
+     * 获取导航按钮引导展示标识
+     */
+    fun isNaviGuideVisible(): Boolean {
+        return defaultMMKV.getBoolean("isNaviGuideVisible", false)
     }
 
     fun getSettingModel(): SettingModel {

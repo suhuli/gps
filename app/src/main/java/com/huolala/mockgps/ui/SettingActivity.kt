@@ -36,6 +36,29 @@ class SettingActivity : BaseActivity<ActivitySettingBinding, BaseViewModel>() {
     }
 
     override fun initView() {
+        findViewById<android.view.View>(R.id.btn_map_provider).setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("切换地图服务")
+                .setMessage("切换将停止当前模拟并清空本次路线；地点历史保留。是否继续？")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("停止并切换") { _, _ ->
+                    startActivity(android.content.Intent(this, MapEntryActivity::class.java).putExtra("switch_map", true))
+                }.show()
+        }
+        findViewById<android.view.View>(R.id.btn_privacy_reset).setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle("撤回同意并清除地点历史")
+                .setMessage("将停止模拟、清除地点历史和地图偏好并关闭应用。已保存的轨迹文件不会删除。下次打开需重新同意。")
+                .setNegativeButton("取消", null).setPositiveButton("撤回并退出") { _, _ ->
+                    stopService(android.content.Intent(this, com.huolala.mockgps.server.GpsService::class.java))
+                    com.huolala.mockgps.manager.SearchManager.INSTANCE.cancel()
+                    MMKVUtils.clearDataList(MMKVUtils.LOCATION_LIST_KEY)
+                    MMKVUtils.clearDataList(MMKVUtils.MULTIPLE_NAVI_LIST_KEY)
+                    com.huolala.mockgps.maps.MapPreferences.prefs(this).edit().clear().commit()
+                    finishAffinity()
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ android.os.Process.killProcess(android.os.Process.myPid()) }, 300)
+                }.show()
+        }
+
         dataBinding.recycler.layoutManager = LinearLayoutManager(this)
         mAdapter = SettingAdapter()
         dataBinding.recycler.adapter = mAdapter

@@ -37,11 +37,11 @@ class ExpandActivity : BaseActivity<ActivityExpandBinding, BaseViewModel>() {
         "免责声明",
     )
     private val describes = arrayOf(
-        "通过广播形式发送起终点信息",
+        "仅限同签名且声明 CONTROL_MOCK_LOCATION 权限的应用；受系统后台启动限制",
         "模拟功能设置，扩展功能",
-        "路径：/storage/emulated/0/Android/data/com.huolala.mockgps/files/nav_path",
+        "路径：/storage/emulated/0/Android/data/${com.huolala.mockgps.BuildConfig.APPLICATION_ID}/files/nav_path",
         "https://github.com/liujiayu5566/MockGps",
-        "https://www.pgyer.com/hHJ9",
+        "https://github.com/suhuli/gps/actions",
         "此应用仅限开发学习和开发使用，软件的发布和使用均不收取任何费用。拒绝任何人或任何实体进行出售、重新修改后分发，严禁用于商业谋利用途。项目维护者对软件的滥用不承担任何责任。",
     )
     private val navigation = arrayOf(
@@ -50,6 +50,7 @@ class ExpandActivity : BaseActivity<ActivityExpandBinding, BaseViewModel>() {
         FileMockActivity::class.java,
         null,
         null,
+        null
     )
     private val mExpandData: ArrayList<ExpandModel> = arrayListOf()
 
@@ -93,7 +94,7 @@ class ExpandActivity : BaseActivity<ActivityExpandBinding, BaseViewModel>() {
                         }
 
                         "app下载地址" -> {
-                            ClipboardUtils.copyText("https://www.pgyer.com/hHJ9")
+                            ClipboardUtils.copyText("https://github.com/suhuli/gps/actions")
                             ToastUtils.showShort("复制成功")
                         }
                     }

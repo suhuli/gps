@@ -1,12 +1,18 @@
 package com.huolala.mockgps.ui
 
 import android.content.Intent
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.graphics.Rect
 import android.text.TextUtils
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.AppCompatTextView
-import com.baidu.mapapi.map.*
+import com.huolala.mockgps.maps.ProviderMap as BaiduMap
+import com.huolala.mockgps.maps.MapStatus
+import com.huolala.mockgps.maps.MapStatusUpdateFactory
 import com.baidu.mapapi.search.route.*
 import com.blankj.utilcode.util.*
 import com.castiel.common.base.BaseActivity
@@ -20,6 +26,7 @@ import com.huolala.mockgps.manager.utils.MapConvertUtils
 import com.huolala.mockgps.manager.utils.MapDrawUtils
 import com.huolala.mockgps.model.PoiInfoModel
 import com.huolala.mockgps.model.PoiInfoType
+import com.huolala.mockgps.model.RouteLines
 import java.io.File
 import kotlin.collections.ArrayList
 
@@ -37,15 +44,16 @@ class CalculateRouteActivity : BaseActivity<ActivityCalculateRouteBinding, BaseV
     /**
      * 算路成功的路线
      */
-    private var routeLines: ArrayList<DrivingRouteLine> = arrayListOf()
-    private val mSearchManagerListener  = object : SearchManager.SearchManagerListener {
-        override fun onDrivingRouteResultLines(routeLines: List<DrivingRouteLine>?) {
+    private var routeLines: ArrayList<RouteLines> = arrayListOf()
+    private val mSearchManagerListener = object : SearchManager.SearchManagerListener {
+        override fun onRouteResultLines(routeLines: List<RouteLines>?) {
             viewModel.loading.value = false
             if (routeLines?.isEmpty() != false) {
-                ToastUtils.showShort("路线规划数据获取失败,请检测网络or数据是否正确!")
                 return
             }
-            this@CalculateRouteActivity.routeLines = routeLines as ArrayList<DrivingRouteLine>
+            this@CalculateRouteActivity.routeLines = ArrayList(routeLines)
+            mainIndex = 0
+            mBaiduMap.clear()
             mBaiduMap.let {
                 (dataBinding.tvStart.tag as PoiInfoModel?)?.latLng?.let { start ->
                     MapDrawUtils.drawMarkerToMap(it, start, "marker_start.png")
@@ -57,7 +65,7 @@ class CalculateRouteActivity : BaseActivity<ActivityCalculateRouteBinding, BaseV
                 routeLines.mapIndexed { index, line ->
                     MapDrawUtils.drawLineToMap(
                         it,
-                        MapConvertUtils.convertLatLngList(line),
+                        line.route,
                         Rect(
                             mDefaultPadding,
                             mDefaultPadding + dataBinding.clPanel.height,
@@ -187,9 +195,15 @@ class CalculateRouteActivity : BaseActivity<ActivityCalculateRouteBinding, BaseV
                 mainIndex = ++mainIndex % routeLines.size
                 mBaiduMap.let {
                     routeLines.mapIndexed { index, line ->
+                        (dataBinding.tvStart.tag as PoiInfoModel?)?.latLng?.let { start ->
+                            MapDrawUtils.drawMarkerToMap(it, start, "marker_start.png")
+                        }
+                        (dataBinding.tvEnd.tag as PoiInfoModel?)?.latLng?.let { end ->
+                            MapDrawUtils.drawMarkerToMap(it, end, "marker_end.png")
+                        }
                         MapDrawUtils.drawLineToMap(
                             it,
-                            MapConvertUtils.convertLatLngList(line),
+                            line.route,
                             Rect(
                                 mDefaultPadding,
                                 mDefaultPadding + dataBinding.clPanel.height,
@@ -208,26 +222,26 @@ class CalculateRouteActivity : BaseActivity<ActivityCalculateRouteBinding, BaseV
                     ToastUtils.showShort("数据列表为null！，无法保存")
                     return
                 }
-                val convertLatLngList = MapConvertUtils.convertLatLngList(routeLines[mainIndex])
-                val builder = StringBuilder()
-                convertLatLngList.map {
-                    builder.append(it.longitude).append(",").append(it.latitude).append(";")
+                val points = routeLines[mainIndex].route.toList()
+                val filename = dataBinding.fileName?.toString()?.trim().orEmpty()
+                if (filename.isEmpty() || filename.length > 100 || filename.any { it in "/\\:*?\"<>|" || it.code < 32 } || filename == "." || filename == "..") {
+                    ToastUtils.showShort("文件名无效，请使用不含路径符号的名称"); return
                 }
-                if (!TextUtils.isEmpty(builder)) {
-                    val file = File(getExternalFilesDir("nav_path"), "${dataBinding.fileName}.txt")
-                    if (FileUtils.isFileExists(file)) {
-                        ToastUtils.showShort("文件已经存在！请重命名文件名称")
-                        return
-                    }
-                    FileIOUtils.writeFileFromString(
-                        file,
-                        builder.toString()
-                    ).let {
-                        ToastUtils.showShort(if (it) "保存成功" else "保存失败")
-                        if (it) {
-                            finish()
+                lifecycleScope.launch {
+                    viewModel.loading.value = true
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val file = File(getExternalFilesDir("nav_path"), "$filename.txt")
+                            require(file.createNewFile()) { "文件已存在，请更换名称" }
+                            try {
+                                file.bufferedWriter().use { output ->
+                                    points.forEach { output.write("${it.longitude},${it.latitude};") }
+                                }
+                            } catch (e: Exception) { file.delete(); throw e }
                         }
-                    }
+                        ToastUtils.showShort("保存成功（GCJ-02 坐标）"); finish()
+                    } catch (e: Exception) { ToastUtils.showLong(e.message ?: "保存失败") }
+                    finally { viewModel.loading.value = false }
                 }
             }
 
@@ -246,9 +260,11 @@ class CalculateRouteActivity : BaseActivity<ActivityCalculateRouteBinding, BaseV
         super.onPause()
         SearchManager.INSTANCE.removeSearchManagerListener(mSearchManagerListener)
         dataBinding.mapview.onPause()
-        if (isFinishing) {
-            destroy()
-        }
+    }
+
+    override fun onDestroy() {
+        destroy()
+        super.onDestroy()
     }
 
     private fun destroy() {

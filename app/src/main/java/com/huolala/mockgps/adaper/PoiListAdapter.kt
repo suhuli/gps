@@ -8,7 +8,6 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.baidu.mapapi.search.sug.SuggestionResult
 import com.huolala.mockgps.R
-import kotlinx.android.synthetic.main.item_poiinfo.view.*
 
 /**
  * @author jiayu.liu
@@ -40,9 +39,9 @@ class PoiListAdapter :
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val poiInfo = getItem(position)
-        holder.itemView.tv_item_poi_name.text =
+        holder.itemView.findViewById<android.widget.TextView>(R.id.tv_item_poi_name).text =
             String.format("city: ${poiInfo.city}    name: ${poiInfo.key}")
-        holder.itemView.tv_item_poi_address.text = poiInfo.address
+        holder.itemView.findViewById<android.widget.TextView>(R.id.tv_item_poi_address).text = poiInfo.address
         if (mOnItemClickListener != null) {
             holder.itemView.setOnClickListener {
                 mOnItemClickListener!!.onItemClick(poiInfo)

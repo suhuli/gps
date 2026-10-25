@@ -49,11 +49,18 @@ abstract class BaseActivity<V : ViewDataBinding, VM : BaseViewModel> : AppCompat
     }
 
     protected open fun setStatusBar() {
-        StatusBarUtil.setColor(
-            this,
-            ContextCompat.getColor(this, R.color.colorPrimary),
-            0
-        )
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        val root = dataBinding.root
+        val left = root.paddingLeft
+        val top = root.paddingTop
+        val right = root.paddingRight
+        val bottom = root.paddingBottom
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+            view.setPadding(left + bars.left, top + bars.top, right + bars.right, bottom + bars.bottom)
+            insets
+        }
+        androidx.core.view.ViewCompat.requestApplyInsets(root)
     }
 
     private fun addObserver() {

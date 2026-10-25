@@ -1,140 +1,96 @@
 package com.huolala.mockgps.manager
 
 import android.content.Context
-import android.graphics.Color
 import com.baidu.location.BDAbstractLocationListener
 import com.baidu.location.BDLocation
 import com.baidu.location.LocationClient
 import com.baidu.location.LocationClientOption
-import com.baidu.mapapi.map.BaiduMap
-import com.baidu.mapapi.map.MapStatus
-import com.baidu.mapapi.map.MapStatusUpdateFactory
 import com.baidu.mapapi.map.MyLocationConfiguration
 import com.baidu.mapapi.map.MyLocationData
 import com.baidu.mapapi.model.LatLng
+import com.amap.api.location.AMapLocationClient
+import com.amap.api.location.AMapLocationClientOption
+import com.amap.api.location.AMapLocationListener
+import com.huolala.mockgps.maps.ProviderMap
+import com.huolala.mockgps.maps.MapStatus
+import com.huolala.mockgps.maps.MapStatusUpdateFactory
+import com.huolala.mockgps.utils.LocationUtils
+import com.blankj.utilcode.util.ToastUtils
 
+enum class FollowMode { MODE_SINGLE, MODE_PERSISTENT, MODE_NONE }
+enum class Source { FLOATING, SIMULATED, OTHER }
 
-/**
- * 定位小蓝点显示控制类
- * @author jiayu.liu
- */
-
-enum class FollowMode {
-    MODE_SINGLE,//单次调整中心点
-    MODE_PERSISTENT,//跟随调整中心点
-    MODE_NONE//不调整
-}
-
-/**
- * 来源
- */
-enum class Source {
-    FLOATING,//悬浮窗
-    OTHER,//其他
-}
-
-class MapLocationManager(
-    context: Context,
-    private var baiduMap: BaiduMap,
-    follow: FollowMode,
-    private val source: Source = Source.OTHER
-) {
-    private var mLocationClient: LocationClient
-    private var isZoom = false
-    private val myLocationListener = object : BDAbstractLocationListener() {
+/** Both providers publish GCJ-02; never pass BD-09 into the mock service. */
+class MapLocationManager(context: Context, private val map: ProviderMap, private val follow: FollowMode,
+                         private val source: Source = Source.OTHER) {
+    private var baiduClient: LocationClient? = null
+    private var amapClient: AMapLocationClient? = null
+    private var zoomed = false
+    private var destroyed = false
+    private var errorShown = false
+    private val baiduListener = object : BDAbstractLocationListener() {
         override fun onReceiveLocation(location: BDLocation?) {
-            //mapView 销毁后不在处理新接收的位置
-            if (location == null) {
-                return
-            }
-            baiduMap.locationData?.run {
-                //如果相等 不能更新
-                if (latitude == location.latitude && longitude == location.longitude) {
-                    return
-                }
-            }
-            val locData = MyLocationData.Builder()
-                .accuracy(location.radius)
-                .speed(location.speed)
-                .direction(location.direction)
-                .latitude(location.latitude)
-                .longitude(location.longitude)
-                .build()
-            baiduMap.setMyLocationData(locData)
-            //更新中心点
-            when (follow) {
-                FollowMode.MODE_SINGLE -> {
-                    if (!isZoom) {
-                        zoom(locData)
-                        isZoom = true
-                    }
-                }
-
-                FollowMode.MODE_PERSISTENT ->
-                    zoom(locData)
-
-                else -> {
-
-                }
-            }
+            if (location == null || destroyed) return
+            if (location.locType !in listOf(61, 161, 66)) { error("百度定位失败（${location.locType}），请检查权限、网络和 Key"); return }
+            var lng = location.longitude
+            var lat = location.latitude
+            if (location.coorType == "bd09ll") LocationUtils.bd09ToGcj02(lng, lat).let { lng = it[0]; lat = it[1] }
+            update(lat, lng, location.radius, location.speed, location.direction)
         }
     }
-
-    fun zoom(locData: MyLocationData) {
-        baiduMap.animateMapStatus(
-            MapStatusUpdateFactory.newLatLngZoom(
-                LatLng(
-                    locData.latitude,
-                    locData.longitude
-                ), if (source == Source.FLOATING) 18f else 16f
-            )
-        )
-    }
-
-    fun setLocationMode(mode: MyLocationConfiguration.LocationMode = MyLocationConfiguration.LocationMode.NORMAL) {
-        MyLocationConfiguration(
-            mode,
-            true,
-            null,
-            Color.TRANSPARENT,
-            Color.TRANSPARENT
-        ).apply {
-            if (mode == MyLocationConfiguration.LocationMode.NORMAL) {
-                baiduMap.setMapStatus(
-                    MapStatusUpdateFactory.newMapStatus(
-                        MapStatus.Builder().overlook(0f).rotate(0f).build()
-                    )
-                )
-            }
-            baiduMap.setMyLocationConfiguration(this)
+    private val amapListener = AMapLocationListener { location ->
+        if (location != null && !destroyed) {
+            if (location.errorCode == 0) update(location.latitude, location.longitude, location.accuracy, location.speed, location.bearing)
+            else error("高德定位失败（${location.errorCode}），请检查权限、网络和 Key")
         }
     }
-
     init {
-        setLocationMode(MyLocationConfiguration.LocationMode.NORMAL)
-
-        mLocationClient = LocationClient(context)
-        baiduMap.isMyLocationEnabled = true
-
-        //通过LocationClientOption设置LocationClient相关参数
-        val option = LocationClientOption()
-        option.setScanSpan(1000)
-        option.setNeedDeviceDirect(true)
-        option.isOpenGnss = true
-        option.setIsNeedAltitude(true)
-        option.setOpenAutoNotifyMode(1000, 0, LocationClientOption.LOC_SENSITIVITY_MIDDLE)
-        //设置locationClientOption
-        mLocationClient.locOption = option
-
-        mLocationClient.registerLocationListener(myLocationListener)
-        //开启地图定位图层
-        mLocationClient.start()
+        map.isMyLocationEnabled = true
+        setLocationMode()
+        try {
+            if (source != Source.OTHER) {
+                // Simulated views consume our own position stream, not a second SDK location client.
+            } else if (map.baidu != null) {
+                baiduClient = LocationClient(context.applicationContext).apply {
+                    locOption = LocationClientOption().apply {
+                        setCoorType("gcj02")
+                        setScanSpan(2000)
+                        isOpenGnss = true
+                        setIsNeedAddress(false)
+                    }
+                    registerLocationListener(baiduListener)
+                    start()
+                }
+            } else {
+                amapClient = AMapLocationClient(context.applicationContext).apply {
+                    setLocationOption(AMapLocationClientOption().apply {
+                        interval = 2000
+                        isNeedAddress = false
+                    })
+                    setLocationListener(amapListener)
+                    startLocation()
+                }
+            }
+        } catch (e: Exception) { error("地图定位初始化失败，请检查权限与地图配置") }
     }
-
+    private fun error(message: String) { if (!errorShown) { errorShown = true; ToastUtils.showLong(message) } }
+    private fun update(lat: Double, lng: Double, accuracy: Float, speed: Float, direction: Float) {
+        if (destroyed || !lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) return
+        val data = MyLocationData.Builder().latitude(lat).longitude(lng).accuracy(accuracy).speed(speed).direction(direction).build()
+        map.setMyLocationData(data)
+        if (follow == FollowMode.MODE_PERSISTENT || (follow == FollowMode.MODE_SINGLE && !zoomed)) { zoom(data); zoomed = true }
+    }
+    fun displayPoint(point: LatLng) { update(point.latitude, point.longitude, 1f, 0f, 0f) }
+    fun zoom(data: MyLocationData) { map.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(LatLng(data.latitude, data.longitude), if (source == Source.FLOATING) 18f else 16f)) }
+    fun setLocationMode(mode: MyLocationConfiguration.LocationMode = MyLocationConfiguration.LocationMode.NORMAL) {
+        map.setMyLocationConfiguration(MyLocationConfiguration(mode, true, null))
+        if (mode == MyLocationConfiguration.LocationMode.NORMAL) map.setMapStatus(MapStatusUpdateFactory.newMapStatus(MapStatus.Builder().overlook(0f).rotate(0f).build()))
+    }
     fun onDestroy() {
-        mLocationClient.unRegisterLocationListener(myLocationListener)
-        mLocationClient.stop()
-        baiduMap.isMyLocationEnabled = false
+        if (destroyed) return
+        destroyed = true
+        baiduClient?.unRegisterLocationListener(baiduListener); baiduClient?.stop(); baiduClient = null
+        amapClient?.unRegisterLocationListener(amapListener); amapClient?.stopLocation(); amapClient?.onDestroy(); amapClient = null
+        map.isMyLocationEnabled = false
     }
-
 }

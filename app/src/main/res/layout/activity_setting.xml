@@ -19,6 +19,8 @@
             app:title="模拟功能设置"
             app:titleTextColor="@color/white" />
 
+        <Button android:id="@+id/btn_map_provider" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="切换百度 / 高德地图" />
+        <Button android:id="@+id/btn_privacy_reset" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="撤回隐私同意并清除地点历史" />
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recycler"
             android:layout_width="match_parent"

@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.huolala.mockgps">
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <permission android:name="${applicationId}.permission.CONTROL_MOCK_LOCATION" android:protectionLevel="signature" />
+    <uses-permission android:name="${applicationId}.permission.CONTROL_MOCK_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!--允许程序访问WiFi网络信息-->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!--允许程序读写手机状态和身份-->
-    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!--允许程序访问CellID或WiFi热点来获取粗略的位置-->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
     <!--震动-->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission
@@ -27,7 +26,7 @@
 
     <application
         android:name=".MyApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:fullBackupContent="@xml/backup_descriptor"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -42,6 +41,8 @@
             android:name="design_height_in_dp"
             android:value="667" />
 
+        <meta-data android:name="com.amap.api.v2.apikey" android:value="${AMAP_KEY}" />
+        <service android:name="com.amap.api.location.APSService" android:exported="false" />
         <meta-data
             android:name="com.baidu.lbsapi.API_KEY"
             android:value="${MAP_KEY}" />
@@ -49,10 +50,11 @@
         <service
             android:name="com.baidu.location.f"
             android:enabled="true"
-            android:process=":remote" />
+            android:process=":remote"
+            android:exported="false" />
 
         <activity
-            android:name=".ui.GuideActivity"
+            android:name=".ui.MapEntryActivity"
             android:exported="true"
             android:screenOrientation="portrait"
             tools:ignore="LockedOrientationActivity">
@@ -63,6 +65,7 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".ui.GuideActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity
             android:name=".ui.MockLocationActivity"
             android:exported="false"
@@ -102,6 +105,7 @@
 
         <service
             android:name=".server.GpsService"
+            android:foregroundServiceType="location"
             android:exported="false" />
     </application>
 

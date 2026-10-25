@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 application_id = os.environ['APPLICATION_ID'].strip()
-if os.environ.get('SOURCE_BRANCH') not in ('main', 'dev'):
+if os.environ.get('SOURCE_BRANCH') not in ('main', 'dev', 'feature/dual-map'):
     raise SystemExit('Unsupported source branch')
 if len(application_id) > 200 or not re.fullmatch(r'[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+', application_id):
     raise SystemExit('application_id must be a lowercase dotted Android package name, for example com.yadea.smartmoto')
@@ -31,16 +31,21 @@ if count != 1:
 event = {}
 if os.environ.get('GITHUB_EVENT_PATH'):
     event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
-key = str(event.get('inputs', {}).get('baidu_map_key', '') or '').strip() or os.environ.get('BAIDU_MAP_KEY', '').strip()
-if key:
-    if not re.fullmatch(r'[A-Za-z0-9_-]+', key):
-        raise SystemExit('Unexpected Baidu map key format')
-    print('::add-mask::' + key, flush=True)
-    text, count = re.subn(r"(map_key\s*:\s*)'[^']*'", lambda m: m.group(1) + repr(key), text)
-    if count != 1:
-        raise SystemExit('Expected Baidu map key configuration was not found')
-else:
-    print('WARNING: No map key input or BAIDU_MAP_KEY Secret. The upstream map key may not work with this package and certificate.')
+for input_name, secret_name, config_name in (
+    ('baidu_map_key', 'BAIDU_MAP_KEY', 'map_key'),
+    ('amap_map_key', 'AMAP_MAP_KEY', 'amap_key'),
+):
+    key = str(event.get('inputs', {}).get(input_name, '') or '').strip() or os.environ.get(secret_name, '').strip()
+    if key:
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', key):
+            raise SystemExit('Unexpected map key format: ' + input_name)
+        print('::add-mask::' + key, flush=True)
+        pattern = r'(^[ \t]*' + re.escape(config_name) + r'\s*:\s*)[^\n]+'
+        text, count = re.subn(pattern, lambda m: m.group(1) + repr(key) + ',', text, flags=re.M)
+        if count != 1:
+            raise SystemExit('Expected map key configuration was not found: ' + config_name)
+    else:
+        print('WARNING: ' + secret_name + ' is empty; provider features need a valid Android Key.')
 config.write_text(text)
 
 app_name = os.environ.get('APP_NAME', '雅迪智行')

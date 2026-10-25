@@ -24,67 +24,13 @@ import kotlin.collections.ArrayList
  */
 object Utils {
 
-    @SuppressLint("WrongConstant")
+    /** A permission probe must never add/remove GPS providers or disrupt a running session. */
     fun isAllowMockLocation(context: Context): Boolean {
-        var canMockPosition: Boolean
-        if (Build.VERSION.SDK_INT <= 22) { //6.0以下
-            canMockPosition = Settings.Secure.getInt(
-                context.applicationContext.getContentResolver(),
-                Settings.Secure.ALLOW_MOCK_LOCATION,
-                0
-            ) !== 0
-        } else {
-            try {
-                val locationManager =
-                    context.applicationContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager //获得LocationManager引用
-                val providerStr = LocationManager.GPS_PROVIDER
-                val provider = locationManager.getProvider(providerStr)
-                if (provider != null) {
-                    locationManager.addTestProvider(
-                        provider.name,
-                        provider.requiresNetwork(),
-                        provider.requiresSatellite(),
-                        provider.requiresCell(),
-                        provider.hasMonetaryCost(),
-                        provider.supportsAltitude(),
-                        provider.supportsSpeed(),
-                        provider.supportsBearing(),
-                        provider.powerRequirement,
-                        provider.accuracy
-                    )
-                } else {
-                    locationManager.addTestProvider(
-                        providerStr,
-                        true,
-                        true,
-                        false,
-                        false,
-                        true,
-                        true,
-                        true,
-                        Criteria.POWER_HIGH,
-                        Criteria.ACCURACY_FINE
-                    )
-                }
-                locationManager.setTestProviderEnabled(providerStr, true)
-                locationManager.setTestProviderStatus(
-                    providerStr,
-                    LocationProvider.AVAILABLE,
-                    null,
-                    System.currentTimeMillis()
-                )
-                // 模拟位置可用
-                canMockPosition = true
-                locationManager.setTestProviderEnabled(providerStr, false)
-                locationManager.removeTestProvider(providerStr)
-            } catch (e: IllegalArgumentException) {
-                canMockPosition = true
-            } catch (e: Exception) {
-                e.printStackTrace()
-                canMockPosition = false
-            }
-        }
-        return canMockPosition
+        if (Build.VERSION.SDK_INT < 23) return Settings.Secure.getInt(context.contentResolver, Settings.Secure.ALLOW_MOCK_LOCATION, 0) != 0
+        return try {
+            val ops = context.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+            ops.checkOpNoThrow(android.app.AppOpsManager.OPSTR_MOCK_LOCATION, android.os.Process.myUid(), context.packageName) == android.app.AppOpsManager.MODE_ALLOWED
+        } catch (e: Exception) { false }
     }
 
     /**

@@ -11,6 +11,7 @@ on:
         options:
           - dev
           - main
+          - feature/dual-map
       application_id:
         description: Android package name (lowercase, dotted)
         required: true
@@ -18,6 +19,11 @@ on:
         default: com.yadea.smartmoto
       baidu_map_key:
         description: Baidu Android map Key (optional; blank uses BAIDU_MAP_KEY Secret)
+        required: false
+        type: string
+        default: ''
+      amap_map_key:
+        description: AMap Android Key (optional; blank uses AMAP_MAP_KEY Secret)
         required: false
         type: string
         default: ''
@@ -80,22 +86,24 @@ jobs:
           log-accepted-android-sdk-licenses: false
 
       - name: Install required Android SDK packages
-        run: sdkmanager 'platforms;android-31' 'build-tools;30.0.3' 'build-tools;29.0.3'
-
-      - name: Set up Java 11 for the legacy Gradle build
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '11'
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
 
       - name: Prepare package name and fixed signing certificate
         env:
           BAIDU_MAP_KEY: ${{ secrets.BAIDU_MAP_KEY }}
+          AMAP_MAP_KEY: ${{ secrets.AMAP_MAP_KEY }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: python3 ../ci-config/.github/scripts/prepare_android.py
+
+      - name: Run coordinate and track-parser unit tests
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.jvmargs="-Xmx3072m -Dfile.encoding=UTF-8" :app:testDebugUnitTest
 
       - name: Build APK
         env:
@@ -104,18 +112,21 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           case "$BUILD_TYPE" in
-            release) ./gradlew --no-daemon --stacktrace :app:assembleRelease ;;
-            debug) ./gradlew --no-daemon --stacktrace :app:assembleDebug ;;
+            release) ./gradlew --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx3072m -Dfile.encoding=UTF-8" :app:assembleRelease ;;
+            debug) ./gradlew --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx3072m -Dfile.encoding=UTF-8" :app:assembleDebug ;;
             *) echo 'Unsupported build type'; exit 1 ;;
           esac
 
       - name: Verify APK package and fixed SHA-1
         run: python3 ../ci-config/.github/scripts/verify_apk.py
 
+      - name: Verify ARM64 native page alignment
+        run: python3 ../ci-config/.github/scripts/check_native_alignment.py
+
       - name: Upload APK and public signing fingerprints
         uses: actions/upload-artifact@v4
         with:
-          name: gps-${{ inputs.source_branch }}-${{ inputs.build_type }}-${{ github.run_number }}
+          name: yadea-smartmoto-${{ inputs.build_type }}-${{ github.run_number }}
           path: source/artifacts/
           if-no-files-found: error
           retention-days: 14

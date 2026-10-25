@@ -1,11 +1,13 @@
 plugins {
     id 'com.android.application'
     id 'kotlin-android'
-    id 'kotlin-android-extensions'
     id 'kotlin-kapt'
 }
 
 android {
+    namespace "com.huolala.mockgps"
+    buildFeatures { viewBinding true; buildConfig true }
+    testOptions { unitTests.all { maxHeapSize = "256m" } }
     compileSdkVersion rootProject.ext.android.compileSdkVersion
 
     dataBinding {
@@ -21,30 +23,32 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        ndk { abiFilters "armeabi", "armeabi-v7a", "arm64-v8a", "x86" }
+        ndk { abiFilters "armeabi-v7a", "arm64-v8a" }
     }
 
-    signingConfigs {// 自动化打包配置
-        release {// 线上环境
-            keyAlias 'huolala'
-            keyPassword 'huolala123'
-            storeFile file('key')
-            storePassword 'huolala123'
+    signingConfigs {
+        fixed {
+            if (System.getenv('GPS_KEYSTORE_PATH')) {
+                storeFile file(System.getenv('GPS_KEYSTORE_PATH'))
+                storeType 'PKCS12'
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
         }
     }
-
     buildTypes {
         debug {
-            signingConfig signingConfigs.release
+            signingConfig signingConfigs.fixed
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            manifestPlaceholders = [MAP_KEY: rootProject.ext.android.map_key]
+            manifestPlaceholders = [MAP_KEY: rootProject.ext.android.map_key, AMAP_KEY: rootProject.ext.android.amap_key]
         }
         release {
-            signingConfig signingConfigs.release
+            signingConfig signingConfigs.fixed
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            manifestPlaceholders = [MAP_KEY: rootProject.ext.android.map_key]
+            manifestPlaceholders = [MAP_KEY: rootProject.ext.android.map_key, AMAP_KEY: rootProject.ext.android.amap_key]
         }
     }
     compileOptions {
@@ -52,7 +56,7 @@ android {
         targetCompatibility JavaVersion.VERSION_11
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '11'
     }
     sourceSets {
         main {
@@ -63,9 +67,16 @@ android {
 
 dependencies {
     implementation fileTree(include: ['*.jar', '*.aar'], dir: 'libs')
+    implementation 'com.amap.api:3dmap-location-search:11.3.100_loc11.3.101_sea9.8.1'
+    testImplementation 'junit:junit:4.13.2'
     implementation project(':common')
-    implementation 'com.baidu.lbsyun:BaiduMapSDK_Location:9.6.0'
-    implementation 'com.baidu.lbsyun:BaiduMapSDK_Map:7.6.1'
-    implementation 'com.baidu.lbsyun:BaiduMapSDK_Search:7.6.1'
-    implementation 'com.github.tiann:FreeReflection:3.1.0'
+    implementation 'com.baidu.lbsyun:BaiduMapSDK_Location:9.7.0'
+    implementation 'com.baidu.lbsyun:BaiduMapSDK_Map:8.2.0.2'
+    implementation 'com.baidu.lbsyun:BaiduMapSDK_Search:8.2.0.2'
+}
+// A missing signing identity must not silently produce a different debug certificate.
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.project == project && it.name.toLowerCase().startsWith('package') } && !System.getenv('GPS_KEYSTORE_PATH')) {
+        throw new GradleException('Fixed signing identity is required for APK packaging')
+    }
 }

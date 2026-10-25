@@ -1,6 +1,17 @@
 package com.huolala.mockgps.server
 
 import android.app.Service
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import android.content.Context
+import android.content.pm.PackageManager
+import android.Manifest
+import com.huolala.mockgps.R
+import com.huolala.mockgps.maps.MapPreferences
+import com.huolala.mockgps.ui.MapEntryActivity
 import android.content.Intent
 import android.location.Criteria
 import android.location.Location
@@ -27,6 +38,20 @@ import kotlin.random.Random
  */
 class GpsService : Service() {
     companion object {
+        private val _location = androidx.lifecycle.MutableLiveData<LatLng?>()
+        val currentLocation: androidx.lifecycle.LiveData<LatLng?> = _location
+        @Volatile var isRunning = false
+            private set
+        const val ACTION_STOP = "com.yadea.smartmoto.STOP"
+        const val ACTION_PAUSE = "com.yadea.smartmoto.PAUSE"
+        const val ACTION_RESUME = "com.yadea.smartmoto.RESUME"
+        private const val CHANNEL = "mock_location"
+        private const val NOTIFICATION = 258
+        fun start(context: Context, model: MockMessageModel) {
+            try {
+                ContextCompat.startForegroundService(context, Intent(context, GpsService::class.java).putExtra("info", model))
+            } catch (e: Exception) { ToastUtils.showLong("无法从后台启动定位，请返回雅迪智行后重试") }
+        }
         private const val START_MOCK_LOCATION = 1001
         private const val START_MOCK_NAVI = 1002
         private const val START_MOCK_FILE_NAVI = 1003
@@ -34,6 +59,7 @@ class GpsService : Service() {
 
     private var locationManager: LocationManager? = null
     private var isStart = false
+    private var destroying = false
     private lateinit var handle: Handler
     private var model: MockMessageModel? = null
     private var index = 0
@@ -56,6 +82,7 @@ class GpsService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         handle = object : Handler(Looper.getMainLooper()) {
             override fun handleMessage(msg: Message) {
                 //重置为默认值
@@ -71,7 +98,7 @@ class GpsService : Service() {
                                     ).apply {
                                         //仅震动模式时，可以配置震动的频率
                                         mNaviUpdateValue =
-                                            MMKVUtils.getLocationFrequencyValue() * 1000L
+                                            MMKVUtils.getLocationFrequencyValue().coerceIn(1, 3600) * 1000L
                                         startSimulateLocation(this, true)
                                     }
                                 } else {
@@ -168,8 +195,10 @@ class GpsService : Service() {
                 }
 
                 override fun changeNaviInfo(index: Int, speed: Int) {
-                    MMKVUtils.setSpeed(speed)
-                    mSpeed = speed / 3.6f
+                    val safeSpeed = speed.coerceIn(1, 300)
+                    MMKVUtils.setSpeed(safeSpeed)
+                    model?.speed = safeSpeed
+                    mSpeed = safeSpeed / 3.6f
                     //index==-1 仅调整速度
                     if (index >= 0) {
                         SearchManager.INSTANCE.polylineList.let {
@@ -218,55 +247,33 @@ class GpsService : Service() {
     }
 
     fun getLatLngNext(polyline: ArrayList<*>): LatLng {
-        val mSpeed = this.mSpeed / (1000.0 / mNaviUpdateValue)
-
-        val indexLonLat = polyline[index] as LatLng
-        val polyLineCount = polyline.size
-
-        //计算当前位置到index节点的距离
-        val dis = CalculationLogLatDistance.getDistance(mCurrentLocation, indexLonLat)
-        //计算角度
-        val yaw = CalculationLogLatDistance.getYaw(mCurrentLocation, indexLonLat)
-
-        if (!yaw.isNaN()) {
-            bearing = yaw.toFloat()
-        }
-
-        if (dis > mSpeed) {
-            //距离大于speed 计算经纬度
-            var location = CalculationLogLatDistance.getNextLonLat(mCurrentLocation, yaw, mSpeed)
-            //绑路逻辑 优化计算经纬度的误差
-            if (MMKVUtils.isNaviRouteBindingSwitch()) {
-                SearchManager.INSTANCE.polylineList.let {
-                    if (it.isEmpty()) {
-                        return@let
+        require(polyline.isNotEmpty())
+        val step = mSpeed.coerceIn(0.01f, 300 / 3.6f) * mNaviUpdateValue / 1000.0
+        // Skip duplicates iteratively: imported files must never overflow the call stack.
+        while (index < polyline.size) {
+            val target = polyline[index] as LatLng
+            val current = mCurrentLocation ?: target
+            val distance = CalculationLogLatDistance.getDistance(current, target)
+            val yaw = CalculationLogLatDistance.getYaw(current, target)
+            if (yaw.isFinite()) bearing = yaw.toFloat()
+            if (distance > step) {
+                var next = CalculationLogLatDistance.getNextLonLat(current, yaw, step)
+                if (MMKVUtils.isNaviRouteBindingSwitch()) {
+                    val route = SearchManager.INSTANCE.polylineList
+                    if (route.size > 1) {
+                        // Restrict snapping to the current segment neighbourhood, not the entire track every tick.
+                        val from = (index - 32).coerceAtLeast(0)
+                        val to = (index + 65).coerceAtMost(route.size)
+                        next = RouteBindingUtils.snapToPath(next, route.subList(from, to))
                     }
-                    location =
-                        RouteBindingUtils.snapToPath(location, SearchManager.INSTANCE.polylineList)
                 }
+                if (CalculationLogLatDistance.isCheckNaN(next)) { index++; return target }
+                return next
             }
-
-            //计算经纬度为非法值则直接取下一阶段经纬度更新
-            if (CalculationLogLatDistance.isCheckNaN(location)) {
-                location = polyline[index] as LatLng
-                index++
-            }
-            return location
-        }
-
-        //终点
-        if (index >= polyLineCount - 1) {
-            val latLng = polyline[polyLineCount - 1] as LatLng
             index++
-            return latLng
+            if (distance > 0 || index == polyline.size) return target
         }
-        if (dis > 0) {
-            index++
-            return indexLonLat
-        }
-        //循环递归计算经纬度
-        index++
-        return getLatLngNext(polyline)
+        return polyline.last() as LatLng
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -274,17 +281,53 @@ class GpsService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        //开始模拟
-        if (Utils.isAllowMockLocation(this)) {
-            intent?.run {
-                getParcelableExtra<MockMessageModel?>("info")?.let {
-                    model = it
+        if (intent == null || intent.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
+        if (!MapPreferences.consented(this) || !Utils.isAllowMockLocation(this) ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
+            !Utils.checkFloatWindow(this)) {
+            ToastUtils.showLong("无法启动：请检查隐私同意、精确定位、模拟定位和悬浮窗权限")
+            stopSelf(); return START_NOT_STICKY
+        }
+        try {
+            MapPreferences.requireProvider(this)
+            showNotification()
+            when (intent.action) {
+                ACTION_PAUSE -> { handle.removeCallbacksAndMessages(null); removeGps() }
+                ACTION_RESUME -> {
+                    val data = model ?: run { stopSelf(); return START_NOT_STICKY }
+                    if (data.naviType == NaviType.LOCATION) sendHandler(START_MOCK_LOCATION, data.locationModel)
+                    else if (SearchManager.INSTANCE.polylineList.isNotEmpty()) sendHandler(START_MOCK_NAVI, SearchManager.INSTANCE.polylineList)
+                }
+                else -> {
+                    model = intent.getParcelableExtra("info") ?: run { stopSelf(); return START_NOT_STICKY }
+                    require(model!!.speed in 1..300) { "速度必须为 1–300 km/h" }
+                    initFloatingView()
+                    mockLocation()
                 }
             }
+            showNotification()
+        } catch (e: Exception) {
+            ToastUtils.showLong("定位服务启动失败，请检查权限和地图配置")
+            stopSelf()
         }
-        initFloatingView()
-        mockLocation()
-        return super.onStartCommand(intent, flags, startId)
+        return START_NOT_STICKY
+    }
+
+    private fun showNotification() {
+        if (destroying) return
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(NotificationChannel(CHANNEL, "模拟定位运行状态", NotificationManager.IMPORTANCE_LOW))
+        fun action(name: String, code: Int) = PendingIntent.getService(this, code,
+            Intent(this, GpsService::class.java).setAction(name), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val open = PendingIntent.getActivity(this, 0, Intent(this, MapEntryActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notification = NotificationCompat.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_location)
+            .setContentTitle("雅迪智行 · ${MapPreferences.selected?.title ?: "模拟定位"}")
+            .setContentText(if (isStart) "模拟定位运行中" else "模拟已暂停，可恢复或停止")
+            .setOngoing(true).setOnlyAlertOnce(true).setContentIntent(open)
+            .addAction(0, if (isStart) "暂停" else "继续", action(if (isStart) ACTION_PAUSE else ACTION_RESUME, 1))
+            .addAction(0, "停止", action(ACTION_STOP, 2)).build()
+        startForeground(NOTIFICATION, notification)
     }
 
     private fun mockLocation() {
@@ -335,15 +378,20 @@ class GpsService : Service() {
             handle.removeCallbacksAndMessages(null)
             handle.sendMessage(it)
             FloatingViewManger.INSTANCE.startMock()
+            showNotification()
         }
     }
 
 
     override fun onDestroy() {
+        isRunning = false
+        _location.value = null
+        destroying = true
         super.onDestroy()
         FloatingViewManger.INSTANCE.onDestroy()
         handle.removeCallbacksAndMessages(null)
         removeGps()
+        stopForeground(true)
     }
 
 
@@ -377,26 +425,24 @@ class GpsService : Service() {
         loc.elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
         //通知悬浮窗当前位置
         FloatingViewManger.INSTANCE.setCurLocation(latLng)
+        _location.value = latLng
 
         mockGps(loc)
     }
 
     private fun removeGps() {
-        try {
-            locationManager?.run {
-                setTestProviderEnabled(providerStr, false)
-                setTestProviderEnabled(networkStr, false)
-                removeTestProvider(providerStr)
-                removeTestProvider(networkStr)
+        // Each provider is cleaned independently; a missing GPS test provider must not strand network.
+        locationManager?.let { manager ->
+            for (provider in listOf(providerStr, networkStr)) {
+                runCatching { manager.setTestProviderEnabled(provider, false) }
+                runCatching { manager.removeTestProvider(provider) }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        } finally {
-            isStart = false
-            //先通知stopMock  再修改naviType为NaviType.NONE
-            FloatingViewManger.INSTANCE.stopMock()
-            naviType = NaviType.NONE
         }
+        isStart = false
+        FloatingViewManger.INSTANCE.stopMock()
+        // Preserve the mode while paused so the floating resume button resumes single-point mode too.
+        naviType = if (destroying) NaviType.NONE else model?.naviType ?: NaviType.NONE
+        if (model != null) showNotification()
     }
 
     private fun mockGps(location: Location) {
@@ -409,7 +455,9 @@ class GpsService : Service() {
                     setTestProviderLocation(networkStr, location)
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                handle.removeCallbacksAndMessages(null)
+                ToastUtils.showLong("模拟位置写入失败，请重新检查开发者选项和定位权限")
+                stopSelf()
             }
         }
     }

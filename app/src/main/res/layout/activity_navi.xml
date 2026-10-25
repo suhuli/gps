@@ -14,7 +14,7 @@
         tools:context=".ui.MockLocationActivity">
 
 
-        <com.baidu.mapapi.map.MapView
+        <com.huolala.mockgps.maps.ProviderMapView
             android:id="@+id/mapview"
             android:layout_width="match_parent"
             android:layout_height="match_parent"

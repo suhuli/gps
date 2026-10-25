@@ -28,9 +28,6 @@ import com.huolala.mockgps.utils.CalculationLogLatDistance
 import com.huolala.mockgps.utils.HandlerUtils
 import com.huolala.mockgps.utils.MMKVUtils
 import com.huolala.mockgps.widget.RockerView
-import kotlinx.android.synthetic.main.layout_floating.view.*
-import kotlinx.android.synthetic.main.layout_floating_location_adjust.view.*
-import kotlinx.android.synthetic.main.layout_floating_navi_adjust.view.*
 import okhttp3.internal.format
 import java.util.Locale
 
@@ -38,6 +35,9 @@ import java.util.Locale
  * @author jiayu.liu
  */
 class FloatingViewManger private constructor() {
+    private val floatingBinding get() = view?.let { com.huolala.mockgps.databinding.LayoutFloatingBinding.bind(it) }
+    private val locationBinding get() = locationAdjust?.let { com.huolala.mockgps.databinding.LayoutFloatingLocationAdjustBinding.bind(it) }
+    private val naviBinding get() = naviAdjust?.let { com.huolala.mockgps.databinding.LayoutFloatingNaviAdjustBinding.bind(it) }
     private var windowManager: WindowManager =
         Utils.getApp().getSystemService(Service.WINDOW_SERVICE) as WindowManager
 
@@ -78,7 +78,7 @@ class FloatingViewManger private constructor() {
      * 隐藏设置按钮
      */
     private val settingViewRunnable: Runnable =
-        Runnable { view?.iv_setting?.visibility = View.INVISIBLE }
+        Runnable { floatingBinding?.ivSetting?.visibility = View.INVISIBLE }
 
     /**
      * 摇杆不动 补发当前方向
@@ -103,11 +103,11 @@ class FloatingViewManger private constructor() {
         }
         view = LayoutInflater.from(Utils.getApp()).inflate(R.layout.layout_floating, null)
 
-        view?.mapview?.onCreate(Utils.getApp(), null)
-        view?.mapview?.showScaleControl(false)
-        view?.mapview?.showZoomControls(false)
-        view?.mapview?.getChildAt(1)?.visibility = View.GONE
-        view?.mapview?.map?.let {
+        floatingBinding?.mapview?.onCreate(Utils.getApp(), null)
+        floatingBinding?.mapview?.onResume()
+        floatingBinding?.mapview?.showScaleControl(false)
+        floatingBinding?.mapview?.showZoomControls(false)
+        floatingBinding?.mapview?.map?.let {
             it.uiSettings?.isCompassEnabled = false
             it.uiSettings?.setAllGesturesEnabled(false)
             it.uiSettings?.isOverlookingGesturesEnabled = false
@@ -118,11 +118,12 @@ class FloatingViewManger private constructor() {
                     FollowMode.MODE_PERSISTENT,
                     Source.FLOATING
                 )
+                curLocation?.let { point -> mapLocationManager?.displayPoint(point) }
             }
         }
 
         //暂停播放
-        ClickUtils.applySingleDebouncing(view?.startAndPause) {
+        ClickUtils.applySingleDebouncing(floatingBinding?.startAndPause) {
             listener?.let { listener ->
                 if (!it.isSelected) {
                     listener.reStart(false)
@@ -133,19 +134,19 @@ class FloatingViewManger private constructor() {
         }
 
 
-        ClickUtils.applySingleDebouncing(view?.iv_rest) {
+        ClickUtils.applySingleDebouncing(floatingBinding?.ivRest) {
             listener?.reStart(true)
         }
 
         //控制展示暂停面板
-        ClickUtils.applySingleDebouncing(view?.iv_setting) {
+        ClickUtils.applySingleDebouncing(floatingBinding?.ivSetting) {
             infoViewCurVisibility =
-                if (view?.info?.visibility == View.VISIBLE) View.INVISIBLE else View.VISIBLE
-            view?.info?.visibility = infoViewCurVisibility
+                if (floatingBinding?.info?.visibility == View.VISIBLE) View.INVISIBLE else View.VISIBLE
+            floatingBinding?.info?.visibility = infoViewCurVisibility
         }
 
         //微调控制面板
-        ClickUtils.applySingleDebouncing(view?.iv_adjust) {
+        ClickUtils.applySingleDebouncing(floatingBinding?.ivAdjust) {
             if (isAddAdjust) {
                 isAddAdjust = false
 
@@ -174,7 +175,7 @@ class FloatingViewManger private constructor() {
             val layoutParams = getLayoutParams()
             addToWindow(view, layoutParams)
             layoutParams.let { params ->
-                view?.card?.setOnTouchListener(
+                floatingBinding?.card?.setOnTouchListener(
                     FloatingTouchListener(
                         windowManager,
                         params,
@@ -185,29 +186,29 @@ class FloatingViewManger private constructor() {
 
                             override fun onActionDown() {
                                 HandlerUtils.INSTANCE.removeCallbacks(settingViewRunnable)
-                                view?.iv_setting?.visibility = View.VISIBLE
-                                view?.info!!.visibility = View.INVISIBLE
+                                floatingBinding?.ivSetting?.visibility = View.VISIBLE
+                                floatingBinding?.info!!.visibility = View.INVISIBLE
                             }
 
                             override fun onActionUp(isLeft: Boolean) {
                                 HandlerUtils.INSTANCE.postDelayed(settingViewRunnable, 5000)
-                                (view?.info?.layoutParams as ConstraintLayout.LayoutParams).let {
+                                (floatingBinding?.info?.layoutParams as ConstraintLayout.LayoutParams).let {
                                     if (isLeft) {
-                                        view?.info?.setBackgroundResource(R.drawable.shape_round_10_color_black_30_right)
-                                        view?.info_guideline?.setGuidelinePercent(0.75f)
+                                        floatingBinding?.info?.setBackgroundResource(R.drawable.shape_round_10_color_black_30_right)
+                                        floatingBinding?.infoGuideline?.setGuidelinePercent(0.75f)
                                         it.leftToRight = R.id.spacer
                                         it.rightToLeft = ConstraintLayout.LayoutParams.UNSET
                                     } else {
-                                        view?.info?.setBackgroundResource(R.drawable.shape_round_10_color_black_30_left)
-                                        view?.info_guideline?.setGuidelinePercent(0.25f)
+                                        floatingBinding?.info?.setBackgroundResource(R.drawable.shape_round_10_color_black_30_left)
+                                        floatingBinding?.infoGuideline?.setGuidelinePercent(0.25f)
                                         it.rightToLeft = R.id.spacer
                                         it.leftToRight = ConstraintLayout.LayoutParams.UNSET
 
                                     }
-                                    view?.info?.layoutParams = it
+                                    floatingBinding?.info?.layoutParams = it
                                 }
 
-                                (view?.card?.layoutParams as ConstraintLayout.LayoutParams).let {
+                                (floatingBinding?.card?.layoutParams as ConstraintLayout.LayoutParams).let {
                                     if (isLeft) {
                                         it.rightToRight = ConstraintLayout.LayoutParams.UNSET
                                         it.leftToLeft = ConstraintLayout.LayoutParams.PARENT_ID
@@ -216,10 +217,10 @@ class FloatingViewManger private constructor() {
                                         it.leftToLeft = ConstraintLayout.LayoutParams.UNSET
 
                                     }
-                                    view?.card?.layoutParams = it
+                                    floatingBinding?.card?.layoutParams = it
                                 }
 
-                                view?.info?.visibility = infoViewCurVisibility
+                                floatingBinding?.info?.visibility = infoViewCurVisibility
                             }
                         }
                     })
@@ -258,7 +259,7 @@ class FloatingViewManger private constructor() {
         if (locationAdjust == null) {
             locationAdjust = LayoutInflater.from(Utils.getApp())
                 .inflate(R.layout.layout_floating_location_adjust, null)
-            locationAdjust?.rocker_view!!.setOnAngleChangeListener(object :
+            locationBinding?.rockerView!!.setOnAngleChangeListener(object :
                 RockerView.OnAngleChangeListener {
                 private var currentTimeMillis: Long = 0L
                 private val interval: Long = 500L
@@ -286,7 +287,7 @@ class FloatingViewManger private constructor() {
                 }
 
             })
-            ClickUtils.applySingleDebouncing(locationAdjust?.iv_close!!) {
+            ClickUtils.applySingleDebouncing(locationBinding?.ivClose!!) {
                 removeFromWindow(locationAdjust!!)
                 isAddAdjust = false
             }
@@ -318,9 +319,9 @@ class FloatingViewManger private constructor() {
                 .inflate(R.layout.layout_floating_navi_adjust, null)
 
 
-            naviAdjust?.speed_nav_view!!.updateCurValue(MMKVUtils.getSpeed())
+            naviBinding?.speedNavView!!.updateCurValue(MMKVUtils.getSpeed())
 
-            naviAdjust?.road_nav_seekbar?.setOnSeekBarChangeListener(object :
+            naviBinding?.roadNavSeekbar?.setOnSeekBarChangeListener(object :
                 OnSeekBarChangeListener {
 
                 override fun onProgressChanged(
@@ -337,27 +338,27 @@ class FloatingViewManger private constructor() {
                     seekBar?.let {
                         changeNaviInfo(
                             it.progress,
-                            naviAdjust?.speed_nav_view!!.getCurValue()
+                            naviBinding?.speedNavView!!.getCurValue()
                         )
                     }
                 }
             })
 
             //修改参数
-            ClickUtils.applySingleDebouncing(naviAdjust?.btn_nav_change!!) {
+            ClickUtils.applySingleDebouncing(naviBinding?.btnNavChange!!) {
                 ToastUtils.showShort("修改成功")
-                val speed = naviAdjust?.speed_nav_view!!.getCurValue()
+                val speed = naviBinding?.speedNavView!!.getCurValue()
                 changeNaviInfo(speed = speed)
             }
 
             //关闭微调悬浮窗
-            ClickUtils.applySingleDebouncing(naviAdjust?.iv_nav_close!!) {
+            ClickUtils.applySingleDebouncing(naviBinding?.ivNavClose!!) {
                 removeFromWindow(naviAdjust!!)
                 isAddAdjust = false
             }
 
             //切换成模拟定位微调
-            ClickUtils.applySingleDebouncing(naviAdjust?.btn_change_location!!) {
+            ClickUtils.applySingleDebouncing(naviBinding?.btnChangeLocation!!) {
                 listener?.switchLocation()
             }
         }
@@ -389,7 +390,7 @@ class FloatingViewManger private constructor() {
                 CalculationLogLatDistance.getNextLonLat(
                     curLocation,
                     angle,
-                    locationAdjust?.speed_view!!.getCurValue().toDouble()
+                    locationBinding?.speedView!!.getCurValue().toDouble()
                 )
             if (CalculationLogLatDistance.isCheckNaN(location)) {
                 ToastUtils.showShort("计算经纬度失败,请重试！")
@@ -423,15 +424,15 @@ class FloatingViewManger private constructor() {
      * 开启模拟
      */
     fun startMock() {
-        if (curNaviType == listener?.getNaviType() && view?.startAndPause?.isSelected == true) {
+        if (curNaviType == listener?.getNaviType() && floatingBinding?.startAndPause?.isSelected == true) {
             //模拟模式未变&&当前状态是模拟状态  过滤
             return
         }
-        view?.mapview?.map?.clear()
-        view?.startAndPause?.isSelected = true
+        floatingBinding?.mapview?.map?.clear()
+        floatingBinding?.startAndPause?.isSelected = true
         when (listener?.getNaviType()) {
             NaviType.LOCATION -> {
-                view?.iv_rest?.visibility = View.GONE
+                floatingBinding?.ivRest?.visibility = View.GONE
                 if (isAddAdjust) {
                     naviAdjust?.parent?.let {
                         removeFromWindow(naviAdjust!!)
@@ -442,19 +443,19 @@ class FloatingViewManger private constructor() {
             }
 
             NaviType.NAVI, NaviType.NAVI_FILE -> {
-                view?.iv_rest?.visibility = View.VISIBLE
+                floatingBinding?.ivRest?.visibility = View.VISIBLE
                 if (isAddAdjust) {
                     locationAdjust?.parent?.let {
                         removeFromWindow(locationAdjust!!)
                     }
                     addAdjustNaviToWindow()
-                    naviAdjust?.btn_change_location?.visibility = View.INVISIBLE
+                    naviBinding?.btnChangeLocation?.visibility = View.INVISIBLE
                 }
                 mapLocationManager?.setLocationMode(MyLocationConfiguration.LocationMode.COMPASS)
                 //清空等待  更新当前速度信息
-                naviAdjust?.speed_nav_view?.clearLongClickWait()
-                naviAdjust?.speed_nav_view?.updateCurValue(MMKVUtils.getSpeed())
-                view?.mapview?.map?.let { map ->
+                naviBinding?.speedNavView?.clearLongClickWait()
+                naviBinding?.speedNavView?.updateCurValue(MMKVUtils.getSpeed())
+                floatingBinding?.mapview?.map?.let { map ->
                     SearchManager.INSTANCE.polylineList.let {
                         if (it.isEmpty()) {
                             return
@@ -472,19 +473,19 @@ class FloatingViewManger private constructor() {
 
             else -> {}
         }
-        view?.iv_adjust?.visibility = View.VISIBLE
+        floatingBinding?.ivAdjust?.visibility = View.VISIBLE
     }
 
     /**
      * 停止模拟
      */
     fun stopMock() {
-        view?.startAndPause?.isSelected = false
-        view?.iv_adjust?.visibility = View.GONE
+        floatingBinding?.startAndPause?.isSelected = false
+        floatingBinding?.ivAdjust?.visibility = View.GONE
     }
 
     fun stopMockFromReceiver() {
-        view?.startAndPause?.callOnClick()
+        floatingBinding?.startAndPause?.callOnClick()
     }
 
     /**
@@ -492,12 +493,13 @@ class FloatingViewManger private constructor() {
      */
     fun setCurLocation(curLocation: LatLng?) {
         this.curLocation = curLocation
+        curLocation?.let { mapLocationManager?.displayPoint(it) }
         if (curLocation == null) {
             return
         }
         //已加载到window中
         locationAdjust?.parent?.run {
-            locationAdjust?.tv_info!!.text =
+            locationBinding?.tvInfo!!.text =
                 format(
                     "当前位置：\nlongitude:%.6f\nlatitude:%.6f",
                     curLocation.longitude,
@@ -512,13 +514,13 @@ class FloatingViewManger private constructor() {
     fun updateNaviInfo(index: Int, size: Int) {
         //已加载到window中
         naviAdjust?.parent?.run {
-            naviAdjust?.tv_nav_info!!.text = String.format(
+            naviBinding?.tvNavInfo!!.text = String.format(
                 Locale.getDefault(),
                 "当前进度(道路)：%d/%d",
                 index,
                 size
             )
-            naviAdjust?.road_nav_seekbar?.let {
+            naviBinding?.roadNavSeekbar?.let {
                 if (it.max.toInt() != size - 1) {
 //                    GlobalScope.launch(Dispatchers.IO) {
 //                        ReflectionUtil.setPrivateField(it, "mMax", size - 1)
@@ -532,11 +534,22 @@ class FloatingViewManger private constructor() {
         if (index == size) {
             arriveDestination()
         } else {
-            naviAdjust?.btn_change_location?.visibility = View.INVISIBLE
+            naviBinding?.btnChangeLocation?.visibility = View.INVISIBLE
         }
     }
 
     fun onDestroy() {
+        HandlerUtils.INSTANCE.removeCallbacks(rockerRunnable)
+        HandlerUtils.INSTANCE.removeCallbacks(settingViewRunnable)
+        locationAdjust?.let { runCatching { removeFromWindow(it) } }
+        naviAdjust?.let { runCatching { removeFromWindow(it) } }
+        locationAdjust = null; naviAdjust = null
+        isAddAdjust = false
+        mapLocationManager?.onDestroy()
+        mapLocationManager = null
+        floatingBinding?.mapview?.onPause()
+        floatingBinding?.mapview?.onDestroy()
+        listener = null
         try {
             view?.let {
                 windowManager.removeView(it)
@@ -552,11 +565,11 @@ class FloatingViewManger private constructor() {
      */
     private fun arriveDestination() {
         //不是模拟导航 则忽略
-        if (!isNaviType() || naviAdjust?.btn_change_location?.visibility == View.VISIBLE
+        if (!isNaviType() || naviBinding?.btnChangeLocation?.visibility == View.VISIBLE
         ) {
             return
         }
-        naviAdjust?.btn_change_location?.visibility = View.VISIBLE
+        naviBinding?.btnChangeLocation?.visibility = View.VISIBLE
     }
 
     /**

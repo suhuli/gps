@@ -12,7 +12,6 @@ import com.blankj.utilcode.util.ToastUtils
 import com.huolala.mockgps.R
 import com.huolala.mockgps.databinding.DialogInputSpeedBinding
 import com.huolala.mockgps.utils.MMKVUtils
-import kotlinx.android.synthetic.main.dialog_input_speed.view.*
 
 /**
  * @author jiayu.liu
@@ -34,8 +33,9 @@ class InputSpeed(context: Context) : Dialog(context) {
             ClickUtils.applySingleDebouncing(it.btnConfirm) { view ->
                 try {
                     val speed = it.editSpeed.text.toString().toInt()
-                    if (speed <= 0 || speed > Int.MAX_VALUE) {
-                        ToastUtils.showShort("请输入有效数值(大于0)")
+                    if (speed !in 1..300) {
+                        ToastUtils.showShort("请输入 1–300 km/h")
+                        return@applySingleDebouncing
                     }
                     MMKVUtils.setSpeed(speed)
                 } catch (e: Exception) {
