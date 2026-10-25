@@ -11,23 +11,54 @@ on:
         options:
           - dev
           - main
+      application_id:
+        description: Android package name (lowercase, dotted)
+        required: true
+        type: string
+        default: com.suhuli.gps
+      build_type:
+        description: APK variant (both use the same fixed signing certificate)
+        required: true
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
 
 permissions:
   contents: read
 
 concurrency:
-  group: android-apk-${{ github.actor }}-${{ inputs.source_branch }}
+  group: android-apk-${{ github.actor }}-${{ inputs.source_branch }}-${{ inputs.build_type }}
   cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: source
+
+env:
+  APPLICATION_ID: ${{ inputs.application_id }}
+  SOURCE_BRANCH: ${{ inputs.source_branch }}
+  BUILD_TYPE: ${{ inputs.build_type }}
+  EXPECTED_SIGNING_SHA1: DB:08:33:1A:25:37:F2:BC:72:0D:54:A8:17:2B:E5:38:89:AF:89:95
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
+      - name: Check out trusted workflow helper scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: ci-config
+          persist-credentials: false
+
       - name: Check out selected source branch
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.source_branch }}
+          path: source
           persist-credentials: false
 
       - name: Set up Java for Android SDK tools
@@ -51,46 +82,35 @@ jobs:
           distribution: temurin
           java-version: '11'
 
-      - name: Prepare test signing and optional map key
+      - name: Prepare package name and fixed signing certificate
         env:
           BAIDU_MAP_KEY: ${{ secrets.BAIDU_MAP_KEY }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: python3 ../ci-config/.github/scripts/prepare_android.py
+
+      - name: Build APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          python3 - <<'PY'
-          import os, pathlib, re
-          p = pathlib.Path('app/build.gradle')
-          text = p.read_text()
-          old = 'signingConfig signingConfigs.release'
-          if old not in text:
-              raise SystemExit('Expected upstream debug signing configuration was not found')
-          # Change only the debug variant, not the release signing configuration.
-          p.write_text(text.replace(old, 'signingConfig signingConfigs.debug', 1))
-          key = os.environ.get('BAIDU_MAP_KEY', '').strip()
-          if key:
-              if not re.fullmatch(r'[A-Za-z0-9_-]+', key):
-                  raise SystemExit('Unexpected Baidu map key format')
-              p = pathlib.Path('config.gradle')
-              text, count = re.subn(r"(map_key\s*:\s*)'[^']*'", lambda m: m.group(1) + repr(key), p.read_text())
-              if count != 1:
-                  raise SystemExit('Baidu map key configuration was not found')
-              p.write_text(text)
-          else:
-              print('No BAIDU_MAP_KEY secret set; APK build is possible, but upstream map credentials may not work.')
-          PY
-          chmod +x gradlew
+          case "$BUILD_TYPE" in
+            release) ./gradlew --no-daemon --stacktrace :app:assembleRelease ;;
+            debug) ./gradlew --no-daemon --stacktrace :app:assembleDebug ;;
+            *) echo 'Unsupported build type'; exit 1 ;;
+          esac
 
-      - name: Build debug APK
-        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+      - name: Verify APK package and fixed SHA-1
+        run: python3 ../ci-config/.github/scripts/verify_apk.py
 
-      - name: Show APK signing certificate
-        run: |
-          "$ANDROID_HOME/build-tools/30.0.3/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
-          echo 'Map keys must match the application ID and signing certificate.' >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload installable debug APK
+      - name: Upload APK and public signing fingerprints
         uses: actions/upload-artifact@v4
         with:
-          name: gps-${{ inputs.source_branch }}-debug-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/*.apk
+          name: gps-${{ inputs.source_branch }}-${{ inputs.build_type }}-${{ github.run_number }}
+          path: source/artifacts/
           if-no-files-found: error
           retention-days: 14
 
@@ -100,7 +120,11 @@ jobs:
         with:
           name: build-reports-${{ github.run_number }}
           path: |
-            app/build/reports/
-            common/build/reports/
+            source/app/build/reports/
+            source/common/build/reports/
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Remove temporary signing file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gps-signing.p12"
