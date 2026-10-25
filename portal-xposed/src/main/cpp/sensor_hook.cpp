@@ -38,11 +38,11 @@ ssize_t writeEvents(const void* tube, const ASensorEvent* events, size_t count) 
                 event.u64.step_counter=baseline.load(); ++changed; break;
             }
             case 1: case 9: // Accelerometer/gravity: stationary, upright handset.
-                std::fill(std::begin(event.data),std::end(event.data),0.0f); event.data[2]=9.80665f; ++changed; break;
+                event.data[0]=0.0f; event.data[1]=0.0f; event.data[2]=9.80665f; ++changed; break;
             case 4: case 10: // Gyroscope / linear acceleration.
-                std::fill(std::begin(event.data),std::end(event.data),0.0f); ++changed; break;
+                event.data[0]=0.0f; event.data[1]=0.0f; event.data[2]=0.0f; ++changed; break;
             case 11: case 15: case 20: // Rotation vectors: identity quaternion.
-                std::fill(std::begin(event.data),std::end(event.data),0.0f); event.data[3]=1.0f; ++changed; break;
+                event.data[0]=0.0f; event.data[1]=0.0f; event.data[2]=0.0f; event.data[3]=1.0f; ++changed; break;
             default: break; // Light, proximity, temperature, metadata etc. remain untouched.
         }
         copy[output++]=event;

@@ -123,3 +123,18 @@ ANDROID_KEY_PASSWORD
 ## 唯一主线基准
 
 当前唯一主线版本为 2.6.0-beta4 / 262，用户已验证。旧分支、旧版本标签和旧 Actions 构建已清理，Git 提交历史保留。唯一 Release v2.6.0-beta4 永久保存用户已验证的原始 APK；Actions 附件仍按保留期过期。没有更改应用代码、地图 Secrets 或固定证书。本次仅维护构建入口和说明文档，不产生新应用版本。
+
+
+## test 分支 Root beta1 构建
+
+稳定 main 仍是 2.6.0-beta4 / 262；本节只针对 test 的 2.7.0-root-beta1 / 264。使用 JDK 17、Gradle 8.7、SDK/Build Tools 35、NDK 27.2.12479018、CMake 3.22.1。`portal-xposed` 构建自带 ARM64/ARMv7 `libportal.so`，Dobby 1.2 通过 Prefab 静态链接，链接页对齐为 16 KB；不支持任意路径远程加载。
+
+```sh
+sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+./gradlew :app:testDebugUnitTest :portal-nmea:test :portal-xposed:testDebugUnitTest
+./gradlew :app:lintVitalRelease :app:assembleRelease
+```
+
+签名沿用既有固定证书和仓库 Secrets，无临时签名后备。APK 校验必须包含两个 ABI 的 libportal.so、模块入口、固定包名/签名/地图 Key，以及 ARM64 ELF/APK ZIP 16 KB 对齐。协议升级为 2，覆盖安装后需重启让新模块加载；旧模块不能以“连接成功”冒充新功能可用。
+
+`PORTAL-PARITY.md` 列出功能入口、受限系统 peers、实验能力与有意不复制的危险行为。构建/单测通过不代表 Root 真机或第三方 App 的运行验收通过。

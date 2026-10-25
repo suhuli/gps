@@ -78,7 +78,7 @@ class RootEngineActivity : AppCompatActivity() {
                     RootEngine.stop(); status.text = RootEngine.diagnostics(this@RootEngineActivity)
                 }.show()
         } })
-        body.addView(text("迁移进度：当前为系统位置、回调、既有路线与悬浮窗接入测试。路线管理、摇杆和 GNSS 观察页面已接入源码，尚待构建及真机验收。原生传感器与电话/Wi-Fi/厂商融合为按需启用的实验分支，状态见引擎诊断；构建通过不代表真机兼容。\n\n引擎确认不等于第三方 App 已采用位置。此构建仅供授权测试设备使用。", 13f))
+        body.addView(text("迁移进度：当前为系统位置、回调、既有路线与悬浮窗接入测试。路线管理、摇杆及 GNSS 页面已接入本版；运行兼容性仍需真机验收。原生传感器与电话/Wi-Fi/厂商融合为按需启用的实验分支，状态见引擎诊断；构建通过不代表真机兼容。\n\n引擎确认不等于第三方 App 已采用位置。此构建仅供授权测试设备使用。", 13f))
         setContentView(scroll); ViewCompat.requestApplyInsets(scroll)
     }
 }

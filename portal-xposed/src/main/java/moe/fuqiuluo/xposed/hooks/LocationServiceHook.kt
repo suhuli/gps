@@ -584,7 +584,8 @@ internal object LocationServiceHook: BaseLocationHook() {
                         if (FakeLoc.enableDebugLog) {
                             Logger.debug("onNmeaReceived")
                         }
-                        if (FakeLoc.enable && FakeLoc.enableMockGnss) result = null
+                        val sentence=args.getOrNull(1) as? String ?: return@beforeHook
+                        injectNMEA(sentence)?.let { args[1]=it }
                     })
                 }
             }).isEmpty()) {
