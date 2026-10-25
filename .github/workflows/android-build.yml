@@ -1,0 +1,103 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: Source branch to build
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.actor }}-${{ inputs.source_branch }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out selected source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_branch }}
+          persist-credentials: false
+
+      - name: Set up Java for Android SDK tools
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages
+        run: sdkmanager 'platforms;android-31' 'build-tools;30.0.3' 'build-tools;29.0.3'
+
+      - name: Set up Java 11 for the legacy Gradle build
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Prepare test signing and optional map key
+        env:
+          BAIDU_MAP_KEY: ${{ secrets.BAIDU_MAP_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+          p = pathlib.Path('app/build.gradle')
+          text = p.read_text()
+          old = 'signingConfig signingConfigs.release'
+          if old not in text:
+              raise SystemExit('Expected upstream debug signing configuration was not found')
+          # Change only the debug variant, not the release signing configuration.
+          p.write_text(text.replace(old, 'signingConfig signingConfigs.debug', 1))
+          key = os.environ.get('BAIDU_MAP_KEY', '').strip()
+          if key:
+              if not re.fullmatch(r'[A-Za-z0-9_-]+', key):
+                  raise SystemExit('Unexpected Baidu map key format')
+              p = pathlib.Path('config.gradle')
+              text, count = re.subn(r"(map_key\s*:\s*)'[^']*'", lambda m: m.group(1) + repr(key), p.read_text())
+              if count != 1:
+                  raise SystemExit('Baidu map key configuration was not found')
+              p.write_text(text)
+          else:
+              print('No BAIDU_MAP_KEY secret set; APK build is possible, but upstream map credentials may not work.')
+          PY
+          chmod +x gradlew
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Show APK signing certificate
+        run: |
+          "$ANDROID_HOME/build-tools/30.0.3/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk
+          echo 'Map keys must match the application ID and signing certificate.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: gps-${{ inputs.source_branch }}-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports-${{ github.run_number }}
+          path: |
+            app/build/reports/
+            common/build/reports/
+          if-no-files-found: ignore
+          retention-days: 7
