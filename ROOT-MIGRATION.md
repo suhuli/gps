@@ -14,7 +14,7 @@
 - Existing fixed-point, route/file-route, speed adjustment, floating controls and location adjustment connected to the new publisher.
 - Removed legacy addTestProvider / setTestProviderLocation injection from GpsService; no silent fallback.
 - Dedicated publisher thread and periodic callback command, independent of coordinate jitter interval. WGS84 and SI units at boundary.
-- Pause holds a stationary sample; stop disables engine. Binder owner death and a 15-second heartbeat lease disable simulation.
+- Pause holds a stationary sample; stop disables engine. Binder owner death and a 15-second awake-time heartbeat lease disable simulation.
 - Fresh timestamps; no forced nonzero speed; automatic engine jitter disabled. Existing explicitly configured UI jitter remains supported.
 - Existing two-map selection, search, reverse geocoding, route planning, local location history, input model formats, privacy flow, fixed certificate, icon and UI style retained.
 - Main/test dispatch isolation and artifact naming; main workflow/source not changed by this branch.
@@ -36,6 +36,10 @@
 | All Portal settings and diagnostics | inventory started | partial | no |
 
 No hiding of mock markers or automatic cellular downgrade is enabled. Arbitrary remote library loading is disabled. Unfinished/high-impact upstream options are not presented as working customer features.
+
+## Callback permission protections
+
+The first registration hooks were tightened after review: track listeners only after successful platform registration, preserve normal platform registrations for stop/recovery, recheck current runtime permissions/AppOps on manual callbacks, and keep coarse-only recipients approximate. Sleeping time does not consume the heartbeat lease. These safeguards require device tests alongside the upstream hook behavior.
 
 ## Acceptance gates
 

@@ -25,7 +25,7 @@ object RemoteCommandHandler {
     private val expiry = object : Runnable {
         override fun run() {
             if (!FakeLoc.enable) return
-            if (android.os.SystemClock.elapsedRealtime() - heartbeatAt > 15000L) {
+            if (android.os.SystemClock.uptimeMillis() - heartbeatAt > 15000L) {
                 FakeLoc.enable = false
                 FakeLoc.enableMockGnss = false
                 FakeLoc.enableMockWifi = false
@@ -87,7 +87,7 @@ object RemoteCommandHandler {
                 return true
             }
             "heartbeat" -> {
-                heartbeatAt = android.os.SystemClock.elapsedRealtime()
+                heartbeatAt = android.os.SystemClock.uptimeMillis()
                 return true
             }
             "handshake" -> {
@@ -110,7 +110,7 @@ object RemoteCommandHandler {
 
                 if (ownerBinder?.isBinderAlive != true) return false
                 if (!speed.isFinite() || speed !in 0.0..100.0 || !altitude.isFinite() || altitude !in -1000.0..100000.0 || !accuracy.isFinite() || accuracy !in 0.5f..10000f) return false
-                heartbeatAt = android.os.SystemClock.elapsedRealtime()
+                heartbeatAt = android.os.SystemClock.uptimeMillis()
                 watchdog.removeCallbacks(expiry)
                 watchdog.postDelayed(expiry, 3000L)
                 FakeLoc.enable = true

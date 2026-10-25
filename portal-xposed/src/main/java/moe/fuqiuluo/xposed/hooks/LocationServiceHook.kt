@@ -181,12 +181,13 @@ internal object LocationServiceHook: BaseLocationHook() {
 
             MiuiBlurLocationProviderHook(it)
             MiuiLocationManagerHook(it)
-            MiuiTelephonyManagerHook(it)
+            // Telephony integration remains disabled in this milestone.
         }
 
         LocationNMEAHook(cILocationManager)
 
         if(cILocationManager.hookAllMethods("getLastLocation", afterHook {
+                if (hasThrowable()) return@afterHook
                 // android 7.0.0 ~ 10.0.0
                 // Location getLastLocation(in LocationRequest request, String packageName);
                 // android 11.0.0
@@ -205,7 +206,7 @@ internal object LocationServiceHook: BaseLocationHook() {
                 // It can't be null, because I'm judging in the previous step
                 val location = result as? Location ?: Location("gps")
 
-                result = injectLocation(location)
+                result = forCaller(injectLocation(location), BinderUtils.getCallerUid())
 
                 if(FakeLoc.enableDebugLog) {
                     Logger.debug("getLastLocation: injected! $result")
@@ -215,7 +216,8 @@ internal object LocationServiceHook: BaseLocationHook() {
         }
 
         // android 12 and later remove `requestLocationUpdates`
-        cILocationManager.hookAllMethods("requestLocationUpdates", beforeHook {
+        cILocationManager.hookAllMethods("requestLocationUpdates", afterHook {
+            if (hasThrowable()) return@afterHook
             // android 7.0.0
             // void requestLocationUpdates(in LocationRequest request, in ILocationListener listener, String packageName);
             //
@@ -275,7 +277,7 @@ internal object LocationServiceHook: BaseLocationHook() {
 
             val listener = args.filterIsInstance<IInterface>().firstOrNull() ?: run {
                 Logger.error("requestLocationUpdates: listener is null: $method")
-                return@beforeHook
+                return@afterHook
             }
 
             if(FakeLoc.enableDebugLog) {
@@ -284,14 +286,14 @@ internal object LocationServiceHook: BaseLocationHook() {
 
             addLocationListenerInner(provider, listener)
 
-            if (FakeLoc.disableRegisterLocationListener || FakeLoc.enable) {
+            if (FakeLoc.disableRegisterLocationListener) {
                 result = null
-                return@beforeHook
+                return@afterHook
             }
 
             if (FakeLoc.disableFusedLocation && provider == "fused") {
                 result = null
-                return@beforeHook
+                return@afterHook
             }
         })
         cILocationManager.hookAllMethods("removeUpdates", afterHook {
@@ -305,7 +307,8 @@ internal object LocationServiceHook: BaseLocationHook() {
 
             removeLocationListenerInner(listener)
         })
-        cILocationManager.hookAllMethods("registerLocationListener", beforeHook {
+        cILocationManager.hookAllMethods("registerLocationListener", afterHook {
+            if (hasThrowable()) return@afterHook
             // android 12 ~ android 15
             // void registerLocationListener(String provider, in LocationRequest request, in ILocationListener listener, String packageName, @nullable String attributionTag, String listenerId);
             //
@@ -324,7 +327,7 @@ internal object LocationServiceHook: BaseLocationHook() {
             } ?: "gps"
             val listener = args.filterIsInstance<IInterface>().firstOrNull() ?: run {
                 Logger.error("registerLocationListener: listener is null: $method")
-                return@beforeHook
+                return@afterHook
             }
 
             if(FakeLoc.enableDebugLog) {
@@ -335,12 +338,12 @@ internal object LocationServiceHook: BaseLocationHook() {
 
             if (FakeLoc.disableRegisterLocationListener) {
                 result = null
-                return@beforeHook
+                return@afterHook
             }
 
             if (FakeLoc.disableFusedLocation && provider == "fused") {
                 result = null
-                return@beforeHook
+                return@afterHook
             }
         })
         cILocationManager.hookAllMethods("unregisterLocationListener", afterHook {
@@ -829,18 +832,21 @@ internal object LocationServiceHook: BaseLocationHook() {
                     if (param.args.isEmpty()) return
                     if (!FakeLoc.enable) return
 
+                    val uid = (param.thisObject as? IInterface)?.asBinder()?.let { listenerUids[it] } ?: return
                     when (param.args[0]) {
                         is Location -> {
                             val location = param.args[0] as? Location ?: run {
                                 param.result = null
                                 return
                             }
-                            param.args[0] = injectLocation(location)
+                            param.args[0] = forCaller(injectLocation(location), uid) ?: run { param.result = null; return }
                         }
 
                         is List<*> -> {
                             val locations = param.args[0] as List<*>
-                            param.args[0] = locations.map { injectLocation(it as Location) }
+                            val filtered = locations.filterIsInstance<Location>().mapNotNull { forCaller(injectLocation(it), uid) }
+                            if (filtered.isEmpty()) { param.result = null; return }
+                            param.args[0] = filtered
                         }
                         else -> Logger.error("onLocationChanged args is not `Location`")
                     }
@@ -884,6 +890,8 @@ internal object LocationServiceHook: BaseLocationHook() {
 //        }
 //    }
 
+    private val listenerUids = java.util.concurrent.ConcurrentHashMap<IBinder, Int>()
+
     private fun addLocationListenerInner(provider: String, listener: IInterface) {
         val mDeathRecipient = object: IBinder.DeathRecipient {
             override fun binderDied() {}
@@ -892,6 +900,7 @@ internal object LocationServiceHook: BaseLocationHook() {
                 removeLocationListenerByBinder(who)
             }
         }
+        listenerUids[listener.asBinder()] = BinderUtils.getCallerUid()
         listener.asBinder().linkToDeath(mDeathRecipient, 0)
         locationListeners.add(provider to listener)
         hookILocationListener(listener)
@@ -902,6 +911,7 @@ internal object LocationServiceHook: BaseLocationHook() {
     }
 
     private fun removeLocationListenerByBinder(binder: IBinder) {
+        listenerUids.remove(binder)
         locationListeners.removeIf { it.second.asBinder() == binder }
     }
 
@@ -919,7 +929,8 @@ internal object LocationServiceHook: BaseLocationHook() {
                     Location(listenerWithProvider.first)
                 }
             }
-            location = injectLocation(location)
+            val uid = listenerUids[listener.asBinder()] ?: return@forEach
+            location = forCaller(injectLocation(location), uid) ?: return@forEach
             var called = false
             var error: Throwable? = null
             kotlin.runCatching {

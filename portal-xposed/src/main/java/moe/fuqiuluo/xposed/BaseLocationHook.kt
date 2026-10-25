@@ -44,12 +44,9 @@ abstract class BaseLocationHook: BaseDivineService() {
         val speedAmp = if (FakeLoc.speedAmplitude > 0) Random.nextDouble(-FakeLoc.speedAmplitude, FakeLoc.speedAmplitude) else 0.0
         location.speed = (FakeLoc.speed + speedAmp).coerceAtLeast(0.0).toFloat()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && originLocation.hasSpeedAccuracy()) {
-            location.speedAccuracyMetersPerSecond = (FakeLoc.speed + speedAmp).toFloat()
+            location.speedAccuracyMetersPerSecond = 1.0f
         }
 
-        if (location.altitude == 0.0) {
-            location.altitude = 80.0
-        }
 
         location.time = System.currentTimeMillis()
 
@@ -61,7 +58,7 @@ abstract class BaseLocationHook: BaseDivineService() {
         }
         location.bearing = modBearing.toFloat()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            location.bearingAccuracyDegrees = modBearing.toFloat()
+            location.bearingAccuracyDegrees = 1.0f
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (location.hasBearingAccuracy() && location.bearingAccuracyDegrees == 0.0f) {
@@ -94,7 +91,7 @@ abstract class BaseLocationHook: BaseDivineService() {
                 location.mslAltitudeMeters = FakeLoc.altitude
             }
             if (originLocation.hasVerticalAccuracy()) {
-                location.mslAltitudeAccuracyMeters = FakeLoc.altitude.toFloat()
+                location.mslAltitudeAccuracyMeters = location.accuracy
             }
         }
         if (FakeLoc.hideMock) {
@@ -120,6 +117,29 @@ abstract class BaseLocationHook: BaseDivineService() {
         }
 
         return location
+    }
+
+    /** Preserve runtime permission and app-op delivery checks for synthetic callbacks. */
+    fun forCaller(location: Location, uid: Int): Location? {
+        if (uid == android.os.Process.SYSTEM_UID || uid == 0) return location
+        val identity = android.os.Binder.clearCallingIdentity()
+        try {
+        val context = moe.fuqiuluo.xposed.utils.BinderUtils.getSystemContext() ?: return null
+        val pkg = context.packageManager.getPackagesForUid(uid)?.firstOrNull() ?: return null
+        val ops = context.getSystemService(android.content.Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+        fun allowed(permission: String, op: String): Boolean = runCatching {
+            context.checkPermission(permission, -1, uid) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                ops.noteOpNoThrow(op, uid, pkg) == android.app.AppOpsManager.MODE_ALLOWED
+        }.getOrDefault(false)
+        if (allowed(android.Manifest.permission.ACCESS_FINE_LOCATION, android.app.AppOpsManager.OPSTR_FINE_LOCATION)) return location
+        if (!allowed(android.Manifest.permission.ACCESS_COARSE_LOCATION, android.app.AppOpsManager.OPSTR_COARSE_LOCATION)) return null
+        return Location(location).apply {
+            latitude = kotlin.math.round(latitude * 100.0) / 100.0
+            longitude = kotlin.math.round(longitude * 100.0) / 100.0
+            accuracy = maxOf(accuracy, 2000f)
+            removeAltitude(); removeSpeed(); removeBearing()
+        }
+        } finally { android.os.Binder.restoreCallingIdentity(identity) }
     }
 
     fun injectNMEA(nmeaStr: String): String? {

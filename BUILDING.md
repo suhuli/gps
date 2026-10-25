@@ -1,3 +1,5 @@
+> test 分支正在迁移 Root / LSPosed 版，当前为 2.7.0-root-alpha1 / 263，minSdk 26、JVM 17。以下含稳定版历史说明；Root 迁移状态与未完成项以 ROOT-MIGRATION.md 为准。test 的定位后端已改为 Portal 衍生 Hook，不再要求设置普通模拟定位应用，也没有旧后端回退。
+
 # 雅迪智行：双地图构建说明
 
 ## 构建身份
