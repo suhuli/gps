@@ -6,11 +6,12 @@
 |---|---|---|
 | 工作流分支 | `main` | 保留 main，以使用本仓库的构建脚本 |
 | `source_branch` | `dev` | 选择 dev（2.5.8）或 main（2.5.5）源码 |
-| `application_id` | `com.suhuli.gps` | 自定义 Android 包名，使用小写字母、数字、下划线和点；每段以字母开头 |
+| `application_id` | `com.yadea.smartmoto` | 自定义 Android 包名，使用小写字母、数字、下划线和点；每段以字母开头 |
+| `baidu_map_key` | 留空 | 构建时填入百度地图 Android Key；优先于仓库 Secret |
 | `build_type` | `release` | release 或 debug，均使用同一份固定专用签名 |
 
 构建完成后，在该运行页面的 **Artifacts** 下载 ZIP，其中包含：
-- APK
+- APK（显示名称：**雅迪智行**）
 - `BUILD-INFO.txt`：实际包名、源码分支、构建类型、SHA-1
 - `signing-certificate.txt`：APK 实际签名证书指纹
 
@@ -34,11 +35,15 @@ SHA-1 由证书决定，不能任意输入。修改包名、切换 main/dev 或 
 ## 百度地图 Key
 
 APK 编译成功不代表地图、搜索、算路一定能用。
-在百度控制台按**本次自定义包名 + 上述 SHA-1**申请/配置 Android Key，再添加到：
+在百度控制台按**本次自定义包名 + 上述 SHA-1**申请/配置 Android Key。默认包名为 `com.yadea.smartmoto`。
+
+可以直接在 Run workflow 的 `baidu_map_key` 输入框填写；留空时读取仓库 Secret：
 
 **Settings → Secrets and variables → Actions → New repository secret → `BAIDU_MAP_KEY`**。
 
-未配置时会保留上游源码中的 Key，但它通常不能匹配新包名和新证书。切换包名后应同步调整地图 Key。
+**安全说明：输入框不是 Secret。工作流会对使用的 Key 设置日志遮罩，但输入参数可能通过 GitHub 的运行数据被读取，Key 也会被写入 APK，不能保证保密。敏感 Key 建议存入 Secret 并限制其百度 API 权限与配额。输入的 Key 不会提交到 Git 源码。**
+
+输入框和 Secret 都未配置时会保留上游源码中的 Key，但它通常不能匹配新包名和新证书。切换包名后应同步调整地图 Key。
 原作者的签名文件不用于本工作流的 APK 签名。
 
 ## 安装及兼容性

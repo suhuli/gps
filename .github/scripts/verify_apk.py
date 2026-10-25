@@ -15,6 +15,9 @@ badging = subprocess.check_output([str(tools / 'aapt'), 'dump', 'badging', str(a
 match = re.search(r"^package: name='([^']+)'", badging, re.M)
 if not match or match.group(1) != os.environ['APPLICATION_ID']:
     raise SystemExit('Built APK package does not match application_id input')
+label = re.search(r"^application-label:'([^']*)'", badging, re.M)
+if not label or label.group(1) != os.environ.get('APP_NAME', '雅迪智行'):
+    raise SystemExit('Built APK display name does not match 雅迪智行')
 sha1 = re.search(r'Signer #1 certificate SHA-1 digest:\s*([0-9a-fA-F]+)', signing)
 expected = os.environ['EXPECTED_SIGNING_SHA1'].replace(':', '').lower()
 if not sha1 or sha1.group(1).lower() != expected:
@@ -22,10 +25,11 @@ if not sha1 or sha1.group(1).lower() != expected:
 
 out = Path('artifacts')
 out.mkdir(exist_ok=True)
-name = f"gps-{os.environ['APPLICATION_ID']}-{os.environ['SOURCE_BRANCH']}-{variant}.apk"
+name = f"yadea-smartmoto-{os.environ['APPLICATION_ID']}-{os.environ['SOURCE_BRANCH']}-{variant}.apk"
 (out / name).write_bytes(apk.read_bytes())
 (out / 'signing-certificate.txt').write_text(signing)
 info = '\n'.join([
+    'App name: ' + os.environ.get('APP_NAME', '雅迪智行'),
     'Package: ' + os.environ['APPLICATION_ID'],
     'Source branch: ' + os.environ['SOURCE_BRANCH'],
     'Build type: ' + variant,

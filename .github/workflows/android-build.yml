@@ -15,7 +15,12 @@ on:
         description: Android package name (lowercase, dotted)
         required: true
         type: string
-        default: com.suhuli.gps
+        default: com.yadea.smartmoto
+      baidu_map_key:
+        description: Baidu Android map Key (optional; blank uses BAIDU_MAP_KEY Secret)
+        required: false
+        type: string
+        default: ''
       build_type:
         description: APK variant (both use the same fixed signing certificate)
         required: true
@@ -37,6 +42,7 @@ defaults:
     working-directory: source
 
 env:
+  APP_NAME: '雅迪智行'
   APPLICATION_ID: ${{ inputs.application_id }}
   SOURCE_BRANCH: ${{ inputs.source_branch }}
   BUILD_TYPE: ${{ inputs.build_type }}
