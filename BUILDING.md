@@ -6,7 +6,7 @@
 - 固定证书 SHA-1：`DB:08:33:1A:25:37:F2:BC:72:0D:54:A8:17:2B:E5:38:89:AF:89:95`。
 - debug / release 使用同一已有证书。不得重新生成签名或使用原作者的密钥。
 - 固定密钥缺失时，APK 打包失败，不回退到随机 debug 签名。
-- 版本：2.6.0-beta2 / versionCode 260。仅作为待真机验证的测试版本。
+- 版本：2.6.0-beta3 / versionCode 261。仅作为待真机验证的测试版本。
 
 ## SDK 和工具链（2026-10-25 锁定）
 
@@ -109,3 +109,7 @@ ANDROID_KEY_PASSWORD
 百度官方错误码：240 = APP 服务被禁用；230 = APP Mcode 校验失败。240 优先检查百度控制台该 AK 的 Android SDK 应用类型、应用是否启用、相关服务权限，不通过改源码 namespace 或更换固定签名来规避服务授权。控制台服务开通后先完全退出并重启应用复测；若换了 AK，需要重新构建。
 
 官方错误码说明：https://lbsyun.baidu.com/docs/android?title=androidsdk/guide/addition-func/errorcode
+
+## beta3 构建配置修正
+
+用户确认此前提供的百度 Android Key 有误，本版通过仓库 Secret 更新为用户纠正后的 Key。完整 Key 不进入源码；高德 Key、安装包名及固定签名保持不变。版本号递增至 261，便于覆盖旧测试版。在线鉴权需以设备复测为准，不将成功打包等同于 240 已解决。
