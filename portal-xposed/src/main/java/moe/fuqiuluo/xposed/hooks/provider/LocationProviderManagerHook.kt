@@ -211,7 +211,7 @@ object LocationProviderManagerHook {
                         Logger.debug("getCurrentLocation injected: $callback")
                     }
 
-                    if(FakeLoc.disableGetCurrentLocation) {
+                    if (FakeLoc.enable && FakeLoc.disableGetCurrentLocation) {
                         param.result = null
                         return
                     }

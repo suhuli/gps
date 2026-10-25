@@ -23,31 +23,7 @@ object GnssHook: BaseLocationHook() {
     private fun hookFrameworkGnss(classLoader: ClassLoader) {
         val cGnssManagerService = XposedHelpers.findClassIfExists("com.android.server.location.GnssManagerService", classLoader) ?: return
 
-        val doNothingMethod = object: XC_MethodHook() {
-            override fun beforeHookedMethod(param: MethodHookParam?) {
-                if (param == null || param.args.isEmpty()) return
-
-                if (FakeLoc.enableDebugLog) {
-                    Logger.debug("doNothingMethod: ${param.method.name}")
-                }
-
-                if (FakeLoc.enableMockGnss && !FakeLoc.enableAGPS) {
-                    if (FakeLoc.enableDebugLog) {
-                        Logger.debug("${param.method.name}: disable")
-                    }
-                    param.result = null
-                }
-            }
-        }
-
-        // AGPS Listener?
-        XposedBridge.hookAllMethods(cGnssManagerService, "addGnssAntennaInfoListener", doNothingMethod)
-        XposedBridge.hookAllMethods(cGnssManagerService, "addGnssMeasurementsListener", doNothingMethod)
-        XposedBridge.hookAllMethods(cGnssManagerService, "addGnssNavigationMessageListener", doNothingMethod)
-        XposedBridge.hookAllMethods(cGnssManagerService, "removeGnssAntennaInfoListener", doNothingMethod)
-        XposedBridge.hookAllMethods(cGnssManagerService, "removeGnssMeasurementsListener", doNothingMethod)
-        XposedBridge.hookAllMethods(cGnssManagerService, "removeGnssNavigationMessageListener", doNothingMethod)
-
+        // Never cancel platform listener registration/removal: sessions must restore safely.
         run {
             val hookedGnssCallback = Collections.synchronizedSet(HashSet<String>())
             val unhooks = cGnssManagerService.declaredMethods.filter {
@@ -66,14 +42,7 @@ object GnssHook: BaseLocationHook() {
                         kotlin.runCatching {
                             XposedHelpers.findAndHookMethod(classListener, "onNmeaReceived", Long::class.java, String::class.java, object: XC_MethodHook() {
                                 override fun beforeHookedMethod(param: MethodHookParam) {
-                                    if (FakeLoc.enableMockGnss && !FakeLoc.enableAGPS) {
-                                        if (FakeLoc.enableDebugLog)
-                                            Logger.debug("GnssManagerService.onNmeaReceived: disable")
-                                        param.result = null
-                                        return
-                                    }
-
-                                    val nmea = param.args[1] as String
+                                    val nmea = param.args[1] as? String ?: return
                                     param.args[1] = injectNMEA(nmea) ?: nmea
                                 }
                             })

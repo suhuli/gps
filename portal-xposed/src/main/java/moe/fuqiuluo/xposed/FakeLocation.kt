@@ -33,6 +33,7 @@ class FakeLocation: IXposedHookLoadPackage, IXposedHookZygoteInit {
      */
     override fun initZygote(startupParam: IXposedHookZygoteInit.StartupParam?) {
         if(startupParam == null) return
+        NativeBridge.modulePath = startupParam.modulePath
 
 //        // 宇宙安全声明：以下代码仅供学习交流使用，切勿用于非法用途?
 //        System.setProperty("portal.enable", "true")
@@ -47,23 +48,7 @@ class FakeLocation: IXposedHookLoadPackage, IXposedHookZygoteInit {
      * @throws Throwable Everything the callback throws is caught and logged.
      */
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam?) {
-        if (lpparam?.packageName != "android" && lpparam?.packageName != "com.android.phone") {
-            return
-        }
-
-        val systemClassLoader = (kotlin.runCatching {
-            lpparam.classLoader.loadClass("android.app.ActivityThread")
-                ?: Class.forName("android.app.ActivityThread")
-        }.onFailure {
-            Logger.error("Failed to find ActivityThread", it)
-        }.getOrNull() ?: return)
-            .getMethod("currentActivityThread")
-            .invoke(null)
-            .javaClass
-            .getClassLoader()
-
-        if (systemClassLoader == null) {
-            Logger.error("Failed to get system class loader")
+        if (lpparam == null || (lpparam.packageName != "android" && lpparam.packageName !in PeerBridge.packages)) {
             return
         }
 
@@ -73,29 +58,30 @@ class FakeLocation: IXposedHookLoadPackage, IXposedHookZygoteInit {
             System.setProperty("portal.injected_${lpparam.packageName}", "true")
         }
 
+        PeerBridge.processPackage = lpparam.packageName
+        val loader = lpparam.classLoader
         when (lpparam.packageName) {
             "com.android.phone" -> {
                 Logger.info("Found com.android.phone")
-                // Telephony milestone not enabled.
-                // Vendor telephony milestone not enabled.
+                TelephonyHook(loader)
+                MiuiTelephonyManagerHook(loader)
+                HookCapabilities.record("phone", "已安装可选电话信息 Hook")
             }
             "android" -> {
                 Logger.info("Debug Log Status: ${FakeLoc.enableDebugLog}")
                 FakeLoc.isSystemServerProcess = true
-                startFakeLocHook(systemClassLoader)
-                // No telephony binder modification in milestone 1.
-                // No Wi-Fi interception in milestone 1.
+                startFakeLocHook(loader)
+                runCatching { WlanHook(loader) }.onFailure { HookCapabilities.record("wifi",it.javaClass.simpleName) }
                 AndroidFusedLocationProviderHook(lpparam.classLoader)
-                // Native sensor milestone is not enabled.
-
-                // Third-party process scope requires a separate compatibility milestone.
+                HookCapabilities.record("framework", "系统定位入口已安装；原生传感器按需启用")
             }
             "com.android.location.fused" -> {
                 AndroidFusedLocationProviderHook(lpparam.classLoader)
             }
             "com.xiaomi.location.fused" -> {
-                // Third-party process scope requires a separate compatibility milestone.
+                ThirdPartyLocationHook(loader)
             }
+            "com.xiaomi.metoknlp" -> { ThirdPartyLocationHook(loader) }
             "com.oplus.location" -> {
                 OplusLocationHook(lpparam.classLoader)
             }

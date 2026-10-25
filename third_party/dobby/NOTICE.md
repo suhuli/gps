@@ -1,0 +1,1 @@
+Dobby native instrumentation dependency: io.github.vvb2060.ndk:dobby:1.2 (Prefab static library). Upstream: https://github.com/jmpews/Dobby . Bundled into libportal.so; Apache-2.0 license retained here.

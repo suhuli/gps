@@ -83,6 +83,17 @@ class FloatingViewManger private constructor() {
     /**
      * 摇杆不动 补发当前方向
      */
+    private var rockerTouching = false
+    private val continuousRocker = object : Runnable {
+        override fun run() {
+            val binding = locationBinding ?: return
+            if (!isAddAdjust || !com.yadea.smartmoto.server.GpsService.acceptsMotion || !binding.rootContinuous.isChecked || (!rockerTouching && !binding.rootDirectionLock.isChecked)) {
+                com.yadea.smartmoto.root.RootMotion.stop(); return
+            }
+            com.yadea.smartmoto.root.RootMotion.set(angle,binding.speedView.getCurValue().coerceIn(1,300).toDouble(),binding.rootDirectionLock.isChecked)
+            HandlerUtils.INSTANCE.postDelayed(this,250L)
+        }
+    }
     private val rockerRunnable: Runnable = Runnable {
         changeLocation(angle)
     }
@@ -259,15 +270,36 @@ class FloatingViewManger private constructor() {
         if (locationAdjust == null) {
             locationAdjust = LayoutInflater.from(Utils.getApp())
                 .inflate(R.layout.layout_floating_location_adjust, null)
+            val rootOptions = com.yadea.smartmoto.root.RootEngine.prefs(Utils.getApp())
+            locationBinding?.rootContinuous?.apply {
+                isChecked = rootOptions.getBoolean("floating_continuous",false)
+                setOnCheckedChangeListener { _, checked ->
+                    rootOptions.edit().putBoolean("floating_continuous",checked).apply()
+                    if (!checked) { com.yadea.smartmoto.root.RootMotion.stop(); HandlerUtils.INSTANCE.removeCallbacks(continuousRocker) }
+                }
+            }
+            locationBinding?.rootDirectionLock?.apply {
+                isChecked = rootOptions.getBoolean("floating_direction_lock",false)
+                setOnCheckedChangeListener { _, checked ->
+                    rootOptions.edit().putBoolean("floating_direction_lock",checked).apply()
+                    if (!checked && !rockerTouching) { com.yadea.smartmoto.root.RootMotion.stop(); HandlerUtils.INSTANCE.removeCallbacks(continuousRocker) }
+                }
+            }
             locationBinding?.rockerView!!.setOnAngleChangeListener(object :
                 RockerView.OnAngleChangeListener {
                 private var currentTimeMillis: Long = 0L
                 private val interval: Long = 500L
 
-                override fun onStart() {}
+                override fun onStart() { rockerTouching = true }
 
                 override fun angle(angle: Double) {
                     this@FloatingViewManger.angle = angle
+                    if (locationBinding?.rootContinuous?.isChecked == true) {
+                        HandlerUtils.INSTANCE.removeCallbacks(continuousRocker)
+                        if (com.yadea.smartmoto.server.GpsService.acceptsMotion) continuousRocker.run()
+                        else ToastUtils.showShort("连续摇杆仅用于已运行的固定点任务")
+                        return
+                    }
                     System.currentTimeMillis().let {
                         //限制触发间隔
                         if (it - currentTimeMillis <= interval) {
@@ -282,12 +314,19 @@ class FloatingViewManger private constructor() {
                 }
 
                 override fun onFinish() {
+                    rockerTouching = false
+                    if (locationBinding?.rootDirectionLock?.isChecked != true) {
+                        HandlerUtils.INSTANCE.removeCallbacks(continuousRocker)
+                        com.yadea.smartmoto.root.RootMotion.stop()
+                    }
                     HandlerUtils.INSTANCE.removeCallbacks(rockerRunnable)
                     listener?.locationAdjustFinish()
                 }
 
             })
             ClickUtils.applySingleDebouncing(locationBinding?.ivClose!!) {
+                HandlerUtils.INSTANCE.removeCallbacks(continuousRocker)
+                com.yadea.smartmoto.root.RootMotion.stop(); rockerTouching=false
                 removeFromWindow(locationAdjust!!)
                 isAddAdjust = false
             }
@@ -501,7 +540,7 @@ class FloatingViewManger private constructor() {
         locationAdjust?.parent?.run {
             locationBinding?.tvInfo!!.text =
                 format(
-                    "当前位置：\nlongitude:%.6f\nlatitude:%.6f",
+                    "当前位置：\nlongitude:%.6f\nlatitude:%.6f" + if(locationBinding?.rootContinuous?.isChecked==true) "\n连续单位 km/h，上限300" else "\n微调单位 m/次",
                     curLocation.longitude,
                     curLocation.latitude
                 )
@@ -539,6 +578,8 @@ class FloatingViewManger private constructor() {
     }
 
     fun onDestroy() {
+        HandlerUtils.INSTANCE.removeCallbacks(continuousRocker)
+        com.yadea.smartmoto.root.RootMotion.stop(); rockerTouching=false
         HandlerUtils.INSTANCE.removeCallbacks(rockerRunnable)
         HandlerUtils.INSTANCE.removeCallbacks(settingViewRunnable)
         locationAdjust?.let { runCatching { removeFromWindow(it) } }

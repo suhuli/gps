@@ -15,29 +15,7 @@ object LocationNMEAHook: BaseLocationHook() {
     operator fun invoke(classILocationManager: Class<*>) {
         hookGnssNmea(classILocationManager)
 
-        val doNothingMethod = object: XC_MethodHook() {
-            override fun beforeHookedMethod(param: MethodHookParam?) {
-                if (param == null || param.args.isEmpty()) return
-
-                if (FakeLoc.enableDebugLog) {
-                    Logger.debug("doNothingMethod: ${param.method.name}")
-                }
-
-                if (FakeLoc.enable && !FakeLoc.enableNMEA) {
-                    if (FakeLoc.enableDebugLog) {
-                        Logger.debug("${param.method.name}: disable")
-                    }
-                    param.result = null
-                }
-            }
-        }
-
-        XposedBridge.hookAllMethods(classILocationManager, "addGnssMeasurementsListener", doNothingMethod)
-        XposedBridge.hookAllMethods(classILocationManager, "removeGnssMeasurementsListener", doNothingMethod)
-        XposedBridge.hookAllMethods(classILocationManager, "addGnssNavigationMessageListener", doNothingMethod)
-        XposedBridge.hookAllMethods(classILocationManager, "removeGnssNavigationMessageListener", doNothingMethod)
-        XposedBridge.hookAllMethods(classILocationManager, "addGnssAntennaInfoListener", doNothingMethod)
-        XposedBridge.hookAllMethods(classILocationManager, "removeGnssAntennaInfoListener", doNothingMethod)
+        // Keep all platform registrations and removals intact so stopping restores normal callbacks.
     }
 
     private fun hookGnssNmea(classILocationManager: Class<*>) {
@@ -56,11 +34,6 @@ object LocationNMEAHook: BaseLocationHook() {
                 }
 
                 cIGnssNmeaCallback.onceHookMethodBefore("onNmeaReceived", Long::class.java, String::class.java) {
-                    if (FakeLoc.enableNMEA && !FakeLoc.enableAGPS) {
-                        result = null // disable
-                        return@onceHookMethodBefore
-                    }
-
                     val nmea = args[1] as? String ?: return@onceHookMethodBefore
                     args[1] = injectNMEA(nmea) ?: nmea
                 }

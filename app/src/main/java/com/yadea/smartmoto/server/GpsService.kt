@@ -41,12 +41,15 @@ class GpsService : Service() {
         val currentLocation: androidx.lifecycle.LiveData<LatLng?> = _location
         @Volatile var isRunning = false
             private set
+        @Volatile var acceptsMotion = false
+            private set
         const val ACTION_STOP = "com.yadea.smartmoto.STOP"
         const val ACTION_PAUSE = "com.yadea.smartmoto.PAUSE"
         const val ACTION_RESUME = "com.yadea.smartmoto.RESUME"
         private const val CHANNEL = "mock_location"
         private const val NOTIFICATION = 258
         fun start(context: Context, model: MockMessageModel) {
+            if (RootAuxService.isRunning) { ToastUtils.showLong("请先停止独立卫星任务"); return }
             try {
                 ContextCompat.startForegroundService(context, Intent(context, GpsService::class.java).putExtra("info", model))
             } catch (e: Exception) { ToastUtils.showLong("无法从后台启动定位，请返回雅迪智行后重试") }
@@ -58,6 +61,7 @@ class GpsService : Service() {
 
     private var locationManager: LocationManager? = null
     private var isStart = false
+    private var ownsRootSession = false
     private var destroying = false
     private lateinit var handle: Handler
     private var model: MockMessageModel? = null
@@ -65,6 +69,9 @@ class GpsService : Service() {
     private val providerStr: String = LocationManager.GPS_PROVIDER
     private val networkStr: String = LocationManager.NETWORK_PROVIDER
     private var bearing: Float = 1.0f
+    private var motionTick = 0L
+    private var routeEndMode = "hold"
+    private var activeRoute: ArrayList<LatLng> = arrayListOf()
 
     /**
      * 米/S
@@ -89,8 +96,21 @@ class GpsService : Service() {
                 when (msg.what) {
                     START_MOCK_LOCATION -> {
                         if (isStart) {
-                            (msg.obj as PoiInfoModel?)?.latLng?.let {
-                                if (mCurrentLocation == it && isLocationQuiver()) {
+                            val poi = msg.obj as PoiInfoModel?
+                            poi?.latLng?.let { initial ->
+                                mNaviUpdateValue = 250L
+                                val now = SystemClock.uptimeMillis()
+                                val motion = com.yadea.smartmoto.root.RootMotion.command
+                                val seconds = if (motionTick == 0L) 0.0 else ((now-motionTick).coerceIn(0L, 500L))/1000.0
+                                motionTick = now
+                                val it = if (motion.speedKmh > 0.0) {
+                                    val next = com.yadea.smartmoto.root.MotionMath.step(
+                                        com.yadea.smartmoto.root.RoutePoint(initial.latitude, initial.longitude),
+                                        motion.bearing, motion.speedKmh/3.6*seconds)
+                                    bearing = motion.bearing.toFloat()
+                                    LatLng(next.latitude,next.longitude).also { poi.latLng = it }
+                                } else initial
+                                if (motion.speedKmh == 0.0 && mCurrentLocation == it && isLocationQuiver()) {
                                     CalculationLogLatDistance.getRandomLatLng(
                                         it,
                                         MMKVUtils.getLocationVibrationValue().toDouble()
@@ -114,6 +134,14 @@ class GpsService : Service() {
                             (msg.obj as ArrayList<*>?)?.let {
                                 if (it.isEmpty()) {
                                     return
+                                }
+                                if (index >= it.size) {
+                                    when (routeEndMode) {
+                                        "loop" -> index = 1
+                                        "ping_pong" -> { it.reverse(); index = 1 }
+                                        "stop" -> { stopSelf(); return@let }
+                                        else -> { removeGps(); return@let }
+                                    }
                                 }
                                 if (index == 0) {
                                     mCurrentLocation = it[index] as LatLng
@@ -159,7 +187,8 @@ class GpsService : Service() {
                         if (naviType == NaviType.LOCATION) {
                             mockLocation()
                         } else {
-                            SearchManager.INSTANCE.polylineList.let {
+                            if (isRest) { mockLocation(); return@run }
+                            activeRoute.let {
                                 if (it.isEmpty()) {
                                     FloatingViewManger.INSTANCE.stopMock()
                                     return
@@ -200,7 +229,7 @@ class GpsService : Service() {
                     mSpeed = safeSpeed / 3.6f
                     //index==-1 仅调整速度
                     if (index >= 0) {
-                        SearchManager.INSTANCE.polylineList.let {
+                        activeRoute.let {
                             if (index < it.size) {
                                 mCurrentLocation = it[index]
                                 this@GpsService.index = index
@@ -258,7 +287,7 @@ class GpsService : Service() {
             if (distance > step) {
                 var next = CalculationLogLatDistance.getNextLonLat(current, yaw, step)
                 if (MMKVUtils.isNaviRouteBindingSwitch()) {
-                    val route = SearchManager.INSTANCE.polylineList
+                    val route = activeRoute
                     if (route.size > 1) {
                         // Restrict snapping to the current segment neighbourhood, not the entire track every tick.
                         val from = (index - 32).coerceAtLeast(0)
@@ -295,9 +324,11 @@ class GpsService : Service() {
                 ACTION_RESUME -> {
                     val data = model ?: run { stopSelf(); return START_NOT_STICKY }
                     if (data.naviType == NaviType.LOCATION) sendHandler(START_MOCK_LOCATION, data.locationModel)
-                    else if (SearchManager.INSTANCE.polylineList.isNotEmpty()) sendHandler(START_MOCK_NAVI, SearchManager.INSTANCE.polylineList)
+                    else if (activeRoute.isNotEmpty()) sendHandler(START_MOCK_NAVI, activeRoute)
                 }
                 else -> {
+                    com.yadea.smartmoto.root.RootMotion.stop()
+                    motionTick = 0L
                     model = intent.getParcelableExtra("info") ?: run { stopSelf(); return START_NOT_STICKY }
                     require(model!!.speed in 1..300) { "速度必须为 1–300 km/h" }
                     initFloatingView()
@@ -341,12 +372,11 @@ class GpsService : Service() {
                     mSpeed = speed / 3.6f
                     //算路成功后 startService
                     index = 0
-                    SearchManager.INSTANCE.polylineList.let {
-                        sendHandler(
-                            START_MOCK_NAVI,
-                            it
-                        )
-                    }
+                    routeEndMode = com.yadea.smartmoto.root.RootEngine.prefs(this@GpsService).getString("route_end_mode", "hold") ?: "hold"
+                    val path = ArrayList(SearchManager.INSTANCE.polylineList)
+                    if (routeEndMode == "loop" && path.size > 1 && path.last() != path.first()) path.add(path.first())
+                    activeRoute = path
+                    sendHandler(START_MOCK_NAVI, activeRoute)
                 }
 
                 else -> {
@@ -374,6 +404,9 @@ class GpsService : Service() {
         msg.let {
             prepareRootEngine()
             isStart = true
+            acceptsMotion = this.naviType == NaviType.LOCATION
+            if (!acceptsMotion) com.yadea.smartmoto.root.RootMotion.stop()
+            motionTick = 0L
             handle.removeCallbacksAndMessages(null)
             handle.sendMessage(it)
             FloatingViewManger.INSTANCE.startMock()
@@ -411,7 +444,7 @@ class GpsService : Service() {
 
         val options = com.yadea.smartmoto.root.RootEngine.prefs(this)
         com.yadea.smartmoto.root.RootEngine.offer(com.yadea.smartmoto.root.RootFrame(
-            gps84[1], gps84[0], if (isSingle) 0.0 else mSpeed.toDouble(), bearing.toDouble(),
+            gps84[1], gps84[0], if (isSingle) com.yadea.smartmoto.root.RootMotion.command.speedKmh / 3.6 else mSpeed.toDouble(), bearing.toDouble(),
             options.getString("altitude", "80.0")!!.toDouble(),
             options.getString("accuracy", "1.0")!!.toFloat()))
         FloatingViewManger.INSTANCE.setCurLocation(latLng)
@@ -419,8 +452,13 @@ class GpsService : Service() {
     }
 
     private fun removeGps() {
-        if (destroying) com.yadea.smartmoto.root.RootEngine.stop()
-        else com.yadea.smartmoto.root.RootEngine.hold()
+        acceptsMotion = false
+        com.yadea.smartmoto.root.RootMotion.stop()
+        motionTick = 0L
+        if (ownsRootSession) {
+            if (destroying) com.yadea.smartmoto.root.RootEngine.stop()
+            else com.yadea.smartmoto.root.RootEngine.hold()
+        }
         isStart = false
         FloatingViewManger.INSTANCE.stopMock()
         naviType = if (destroying) NaviType.NONE else model?.naviType ?: NaviType.NONE
@@ -439,6 +477,7 @@ class GpsService : Service() {
             ToastUtils.showLong(message)
             stopSelf()
         }
+        ownsRootSession = true
         com.yadea.smartmoto.root.RootEngine.resume()
     }
 }

@@ -6,6 +6,7 @@ plugins {
 
 android {
     namespace "com.yadea.smartmoto"
+    ndkVersion "27.2.12479018"
     buildFeatures { viewBinding true; buildConfig true }
     testOptions { unitTests.all { maxHeapSize = "256m" } }
     compileSdkVersion rootProject.ext.android.compileSdkVersion

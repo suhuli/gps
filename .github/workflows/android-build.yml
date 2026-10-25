@@ -90,7 +90,9 @@ jobs:
           log-accepted-android-sdk-licenses: false
 
       - name: Install required Android SDK packages
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+        run: |
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          if [ "$SOURCE_BRANCH" = test ]; then sdkmanager 'ndk;27.2.12479018' 'cmake;3.22.1'; fi
 
       - name: Verify root migration source guardrails
         if: inputs.source_branch == 'test'
@@ -111,7 +113,10 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.jvmargs="-Xmx3072m -Dfile.encoding=UTF-8" :app:testDebugUnitTest
+        run: |
+          tasks=":app:testDebugUnitTest"
+          if [ "$SOURCE_BRANCH" = test ]; then tasks="$tasks :portal-nmea:test :portal-xposed:testDebugUnitTest"; fi
+          ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.jvmargs="-Xmx3072m -Dfile.encoding=UTF-8" $tasks
 
       - name: Build APK
         env:

@@ -39,6 +39,10 @@
         <meta-data android:name="xposeddescription" android:value="雅迪智行 Root 测试定位模块；仅用于授权测试设备" />
         <meta-data android:name="xposedminversion" android:value="82" />
         <meta-data android:name="xposedscope" android:resource="@array/root_scope" />
+        <service android:name=".server.RootAuxService" android:exported="false" android:foregroundServiceType="location" />
+        <activity android:name=".ui.RootGnssActivity" android:exported="false" />
+        <activity android:name=".ui.RootRoutesActivity" android:exported="false" />
+        <activity android:name=".ui.RootMotionActivity" android:exported="false" />
         <activity android:name=".ui.RootEngineActivity" android:exported="false" />
         <meta-data
             android:name="design_width_in_dp"

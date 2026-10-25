@@ -10,8 +10,10 @@ import moe.fuqiuluo.xposed.utils.toClass
 
 object AndroidFusedLocationProviderHook: BaseLocationHook() {
     operator fun invoke(classLoader: ClassLoader) {
+        initDivineService("AOSP fused")
         val cFusedLocationProvider = "com.android.location.fused.FusedLocationProvider".toClass(classLoader)
         if (cFusedLocationProvider == null) {
+            moe.fuqiuluo.xposed.HookCapabilities.record("aosp_fused","未匹配提供器类，透传")
             Logger.warn("Failed to find FusedLocationProvider")
             return
         }
@@ -21,10 +23,11 @@ object AndroidFusedLocationProviderHook: BaseLocationHook() {
             return
         }
 
+        moe.fuqiuluo.xposed.HookCapabilities.record("aosp_fused","已匹配提供器类；实际回调需真机验证")
         cFusedLocationProvider.hookMethodAfter("chooseBestLocation", Location::class.java, Location::class.java) {
             if (result == null) return@hookMethodAfter
 
-            if (FakeLoc.enable) {
+            if (FakeLoc.enable && FakeLoc.vendorFused) {
                 result = injectLocation(result as Location)
             }
         }

@@ -286,12 +286,12 @@ internal object LocationServiceHook: BaseLocationHook() {
 
             addLocationListenerInner(provider, listener)
 
-            if (FakeLoc.disableRegisterLocationListener) {
+            if (FakeLoc.enable && FakeLoc.disableRegisterLocationListener) {
                 result = null
                 return@afterHook
             }
 
-            if (FakeLoc.disableFusedLocation && provider == "fused") {
+            if (FakeLoc.enable && FakeLoc.disableFusedLocation && provider == "fused") {
                 result = null
                 return@afterHook
             }
@@ -336,12 +336,12 @@ internal object LocationServiceHook: BaseLocationHook() {
 
             addLocationListenerInner(provider, listener)
 
-            if (FakeLoc.disableRegisterLocationListener) {
+            if (FakeLoc.enable && FakeLoc.disableRegisterLocationListener) {
                 result = null
                 return@afterHook
             }
 
-            if (FakeLoc.disableFusedLocation && provider == "fused") {
+            if (FakeLoc.enable && FakeLoc.disableFusedLocation && provider == "fused") {
                 result = null
                 return@afterHook
             }
@@ -386,7 +386,7 @@ internal object LocationServiceHook: BaseLocationHook() {
         }
 
         cILocationManager.hookAllMethods("requestGeofence", beforeHook {
-            if (FakeLoc.disableRequestGeofence && !FakeLoc.enableAGPS) {
+            if (FakeLoc.enable && FakeLoc.disableRequestGeofence && !FakeLoc.enableAGPS) {
                 if(FakeLoc.enableDebugLog) {
                     Logger.debug("requestGeofence: injected!")
                 }
@@ -397,7 +397,7 @@ internal object LocationServiceHook: BaseLocationHook() {
 //        })
 
         cILocationManager.hookAllMethods("getFromLocation", beforeHook {
-            if (FakeLoc.disableGetFromLocation && !FakeLoc.enableAGPS) {
+            if (FakeLoc.enable && FakeLoc.disableGetFromLocation && !FakeLoc.enableAGPS) {
                 if(FakeLoc.enableDebugLog) {
                     Logger.debug("getFromLocation: injected!")
                 }
@@ -406,7 +406,7 @@ internal object LocationServiceHook: BaseLocationHook() {
         })
 
         cILocationManager.hookAllMethods("getFromLocationName", beforeHook {
-            if (FakeLoc.disableGetFromLocation && !FakeLoc.enableAGPS) {
+            if (FakeLoc.enable && FakeLoc.disableGetFromLocation && !FakeLoc.enableAGPS) {
                 if(FakeLoc.enableDebugLog) {
                     Logger.debug("getFromLocationName: injected!")
                 }
@@ -460,10 +460,6 @@ internal object LocationServiceHook: BaseLocationHook() {
                     if(FakeLoc.enableDebugLog) {
                         Logger.debug("registerGnssStatusCallback: injected!")
                     }
-                    if (!FakeLoc.enableMockGnss) {
-                        return
-                    }
-
                     if (cIGnssStatusListener.onceHookAllMethod("onSvStatusChanged", beforeHook {
                         // android 7.0.0
                         // void onSvStatusChanged(int svCount, in int[] svidWithFlags, in float[] cn0s,
@@ -483,7 +479,7 @@ internal object LocationServiceHook: BaseLocationHook() {
 
                         if (!FakeLoc.enableMockGnss) return@beforeHook
 
-                        val svCount = Random.nextInt(FakeLoc.minSatellites, MAX_SATELLITES + 1)
+                        val svCount = Random.nextInt(FakeLoc.minSatellites.coerceIn(0, MAX_SATELLITES), MAX_SATELLITES + 1)
                         val mockGps = MockGnssData(
                             svCount = svCount,
                             svidWithFlags = IntArray(svCount),
@@ -588,7 +584,7 @@ internal object LocationServiceHook: BaseLocationHook() {
                         if (FakeLoc.enableDebugLog) {
                             Logger.debug("onNmeaReceived")
                         }
-                        if (FakeLoc.enableMockGnss) result = null
+                        if (FakeLoc.enable && FakeLoc.enableMockGnss) result = null
                     })
                 }
             }).isEmpty()) {
@@ -637,7 +633,7 @@ internal object LocationServiceHook: BaseLocationHook() {
 
                 addLocationListenerInner("gps", listener)
 
-                if (FakeLoc.disableRegisterLocationListener || FakeLoc.enable) {
+                if (FakeLoc.enable && FakeLoc.disableRegisterLocationListener || FakeLoc.enable) {
                     result = null
                 }
 
@@ -700,7 +696,7 @@ internal object LocationServiceHook: BaseLocationHook() {
                 Logger.debug("getCurrentLocation: injected!")
             }
 
-            if (FakeLoc.disableGetCurrentLocation) {
+            if (FakeLoc.enable && FakeLoc.disableGetCurrentLocation) {
                 result = null
                 return@beforeHook
             }
@@ -724,7 +720,7 @@ internal object LocationServiceHook: BaseLocationHook() {
             val command = args[1] as String
             val outResult = args[2] as? Bundle
 
-            if (FakeLoc.disableFusedLocation && provider == "fused") {
+            if (FakeLoc.enable && FakeLoc.disableFusedLocation && provider == "fused") {
                 result = false
                 return@beforeHook
             }
@@ -770,7 +766,7 @@ internal object LocationServiceHook: BaseLocationHook() {
                             param.result = BinderUtils.isLocationProviderEnabled(userId)
                         } else if(provider == "network" && FakeLoc.enable && FakeLoc.disableNetworkLocation) {
                             param.result = !FakeLoc.enable
-                        } else if (FakeLoc.disableFusedLocation && provider == "fused") {
+                        } else if (FakeLoc.enable && FakeLoc.disableFusedLocation && provider == "fused") {
                             param.result = false
                             return
                         } else {
@@ -794,7 +790,7 @@ internal object LocationServiceHook: BaseLocationHook() {
                             param.result = true
                         } else if(provider == "network" && FakeLoc.enable && FakeLoc.disableNetworkLocation) {
                             param.result = !FakeLoc.enable
-                        } else if (FakeLoc.disableFusedLocation && provider == "fused") {
+                        } else if (FakeLoc.enable && FakeLoc.disableFusedLocation && provider == "fused") {
                             param.result = false
                             return
                         }
@@ -916,6 +912,7 @@ internal object LocationServiceHook: BaseLocationHook() {
     }
 
     fun callOnLocationChanged() {
+        if (!FakeLoc.enable || FakeLoc.disableRegisterLocationListener) return
         if (FakeLoc.enableDebugLog) {
             Logger.debug("==> callOnLocationChanged: ${locationListeners.size}")
         }

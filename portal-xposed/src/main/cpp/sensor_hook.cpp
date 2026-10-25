@@ -1,83 +1,80 @@
-//
-// Created by fuqiuluo on 2024/10/15.
-//
+// Portal-derived native integration, rewritten to use the public NDK event layout.
+// No fixed-offset writes, negative counters, radio changes, or external library paths.
+#include <android/sensor.h>
 #include <dobby.h>
-#include <unistd.h>
+#include <atomic>
+#include <array>
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <sys/types.h>
+#include <time.h>
 #include "sensor_hook.h"
-#include "logging.h"
-#include "elf_util.h"
-#include "dobby_hook.h"
 
-#define LIBSF_PATH "/system/lib64/libsensorservice.so"
-
-extern bool enableSensorHook;
-
-// _ZN7android16SensorEventQueue5writeERKNS_2spINS_7BitTubeEEEPK12ASensorEventm
-OriginalSensorEventQueueWriteType OriginalSensorEventQueueWrite = nullptr;
-
-OriginalConvertToSensorEventType OriginalConvertToSensorEvent = nullptr;
-
-int64_t SensorEventQueueWrite(void *tube, void *events, int64_t numEvents) {
-    if (enableSensorHook) {
-        LOGD("SensorEventQueueWrite called");
-    }
-    return OriginalSensorEventQueueWrite(tube, events, numEvents);
-}
-
-void ConvertToSensorEvent(void *src, void *dst) {
-    if (enableSensorHook) {
-        auto a = *(int32_t *)((char*)src + 4);
-        auto b = *(int32_t *)((char*)src + 8);
-        auto c = *(int64_t *)((char*)src + 16);
-
-        *(int64_t *)((char*)dst + 16) = 0LL;
-        *(int32_t *)((char*)dst + 24) = 0;
-        *(int64_t *)((char*)dst) = c;
-        *(int32_t *)((char*)dst + 8) = a;
-        *(int32_t *)((char*)dst + 12) = b;
-        *(int8_t *)((char*)dst + 28) = b;
-
-        if (b == 18) {
-            *(float *)((char*)dst + 16) = -1.0;
-        } else if (b == 19) {
-            *(int64_t *)((char*)dst + 16) = -1;
-        } else {
-            *(float *)((char*)dst + 16) = -1.0;
-            *(float *)((char*)dst + 24) = -1.0;
-            *(int8_t *)((char*)dst + 28) = *(int8_t *)((char*)src + 36);
+namespace {
+using Write = ssize_t (*)(const void*, const ASensorEvent*, size_t);
+std::atomic<Write> original{nullptr};
+std::atomic<bool> enabled{false};
+std::atomic<bool> installed{false};
+std::atomic<uint64_t> rewritten{0};
+std::atomic<int64_t> deadline{0};
+int64_t awakeMillis() { timespec time{}; clock_gettime(CLOCK_MONOTONIC,&time); return static_cast<int64_t>(time.tv_sec)*1000+time.tv_nsec/1000000; }
+std::atomic<uint64_t> baseline{std::numeric_limits<uint64_t>::max()};
+ssize_t writeEvents(const void* tube, const ASensorEvent* events, size_t count) {
+    const auto call=original.load(std::memory_order_acquire);
+    if (!call) return 0; // Only the install-time trampoline publication window.
+    if (!enabled.load(std::memory_order_acquire) || awakeMillis() > deadline.load() || !events || count > 256) return call(tube,events,count);
+    std::array<ASensorEvent,256> copy;
+    size_t output=0; uint64_t changed=0;
+    for(size_t i=0;i<count;++i) {
+        // The producer's public ABI must match this build. Otherwise leave the entire batch alone.
+        if(events[i].version != sizeof(ASensorEvent)) return call(tube,events,count);
+        ASensorEvent event=events[i];
+        switch(event.type) {
+            case 18: ++changed; continue; // Step detector: no synthetic step notifications.
+            case 19: { // Step counter: hold a nonnegative monotonic baseline, never write -1.
+                uint64_t unset=std::numeric_limits<uint64_t>::max();
+                baseline.compare_exchange_strong(unset,event.u64.step_counter);
+                event.u64.step_counter=baseline.load(); ++changed; break;
+            }
+            case 1: case 9: // Accelerometer/gravity: stationary, upright handset.
+                std::fill(std::begin(event.data),std::end(event.data),0.0f); event.data[2]=9.80665f; ++changed; break;
+            case 4: case 10: // Gyroscope / linear acceleration.
+                std::fill(std::begin(event.data),std::end(event.data),0.0f); ++changed; break;
+            case 11: case 15: case 20: // Rotation vectors: identity quaternion.
+                std::fill(std::begin(event.data),std::end(event.data),0.0f); event.data[3]=1.0f; ++changed; break;
+            default: break; // Light, proximity, temperature, metadata etc. remain untouched.
         }
-    } else {
-        OriginalConvertToSensorEvent(src, dst);
+        copy[output++]=event;
     }
-
-    if (enableSensorHook) {
-        LOGD("ConvertToSensorEvent called");
-    }
+    rewritten.fetch_add(changed,std::memory_order_relaxed);
+    if(output == 0) return static_cast<ssize_t>(count);
+    const ssize_t written=call(tube,copy.data(),output);
+    return written == static_cast<ssize_t>(output) ? static_cast<ssize_t>(count) : written;
+}
 }
 
-void doSensorHook() {
-    SandHook::ElfImg sensorService(LIBSF_PATH);
-
-    if (!sensorService.isValid()) {
-        LOGE("failed to load libsensorservice");
-        return;
+bool installSensorHook() {
+    if(installed.load()) return true;
+    const char* symbol = sizeof(void*) == 8
+        ? "_ZN7android16SensorEventQueue5writeERKNS_2spINS_7BitTubeEEEPK12ASensorEventm"
+        : "_ZN7android16SensorEventQueue5writeERKNS_2spINS_7BitTubeEEEPK12ASensorEventj";
+    void* target=nullptr;
+    for(const char* library : {"libsensor.so", "libsensorservice.so", "libgui.so"}) {
+        target=DobbySymbolResolver(library,symbol); if(target) break;
     }
-
-    auto sensorWrite = sensorService.getSymbolAddress<void*>("_ZN7android16SensorEventQueue5writeERKNS_2spINS_7BitTubeEEEPK12ASensorEventm");
-    if (sensorWrite == nullptr) {
-        sensorWrite = sensorService.getSymbolAddress<void*>("_ZN7android16SensorEventQueue5writeERKNS_2spINS_7BitTubeEEEPK12ASensorEventj");
-    }
-
-    auto convertToSensorEvent = sensorService.getSymbolAddress<void*>("_ZN7android8hardware7sensors4V1_014implementation20convertToSensorEventERKNS2_5EventEP15sensors_event_t");
-
-    LOGD("Dobby SensorEventQueue::write found at %p", sensorWrite);
-    LOGD("Dobby convertToSensorEvent found at %p", convertToSensorEvent);
-
-    if (sensorWrite != nullptr) {
-        OriginalSensorEventQueueWrite = (OriginalSensorEventQueueWriteType)InlineHook(sensorWrite, (void *)SensorEventQueueWrite);
-    }
-
-    if (convertToSensorEvent != nullptr) {
-        OriginalConvertToSensorEvent = (OriginalConvertToSensorEventType)InlineHook(convertToSensorEvent, (void *)ConvertToSensorEvent);
-    }
+    if(!target) return false;
+    void* trampoline=nullptr;
+    if(DobbyHook(target,reinterpret_cast<void*>(writeEvents),&trampoline) != 0 || !trampoline) return false;
+    original.store(reinterpret_cast<Write>(trampoline),std::memory_order_release);
+    installed.store(true); return true;
 }
+void setSensorEnabled(bool value) {
+    if(!value) enabled.store(false,std::memory_order_release);
+    baseline.store(std::numeric_limits<uint64_t>::max());
+    if(value && installed.load()) { deadline.store(awakeMillis()+15000); enabled.store(true,std::memory_order_release); }
+}
+int sensorHookStatus() { return (installed.load()?1:0) | (enabled.load() && awakeMillis()<=deadline.load()?2:0); }
+uint64_t sensorRewriteCount() { return rewritten.load(); }
+
+void sensorHeartbeat() { deadline.store(awakeMillis()+15000); }

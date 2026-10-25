@@ -19,3 +19,24 @@ assert 'var hideMock = false' in (root/'portal-xposed/src/main/java/moe/fuqiuluo
 assert (root/'portal-xposed/src/main/assets/xposed_init').read_text().strip()=='moe.fuqiuluo.xposed.FakeLocation'
 assert (root/'third_party/portal/LICENSE').exists()
 print('Root source guardrails passed: old backend removed, fixed controller identity, session death/lease, attribution.')
+
+# Follow-up route/motion/GNSS guardrails; runtime compatibility is still a device gate.
+assert '"configure_session" ->' in handler and 'count !in 0..35' in handler
+assert handler.count('FakeLoc.resetSessionOptions()') >= 3
+manifest=(root/'app/src/main/AndroidManifest.xml').read_text()
+for activity in ['RootRoutesActivity', 'RootMotionActivity', 'RootGnssActivity']:
+    assert f'android:name=".ui.{activity}" android:exported="false"' in manifest
+nmea=(root/'portal-xposed/src/main/java/moe/fuqiuluo/xposed/BaseLocationHook.kt').read_text()
+assert 'NmeaRewriter.rewrite' in nmea
+assert (root/'portal-nmea/src/test/java/NmeaRewriterTest.kt').exists()
+print('Follow-up guardrails passed: bounded session settings, cleanup, private UI, NMEA wire tests.')
+
+assert 'peer_snapshot' in handler
+peer=(root/'portal-xposed/src/main/java/moe/fuqiuluo/xposed/PeerBridge.kt').read_text()
+assert 'exchange_key' not in peer and 'PeerPolicy.allowed' in peer
+native=(root/'portal-xposed/src/main/cpp/sensor_hook.cpp').read_text()
+assert 'sizeof(ASensorEvent)' in native and 'CLOCK_MONOTONIC' in native and 'deadline' in native
+assert '-1.0' not in native and '((char*)' not in native
+assert 'externalNativeBuild' in (root/'portal-xposed/build.gradle').read_text()
+assert '.server.RootAuxService' in manifest
+print('Native/peer guardrails passed: bundled native ABI/lease, read-only peers, independent GNSS service.')

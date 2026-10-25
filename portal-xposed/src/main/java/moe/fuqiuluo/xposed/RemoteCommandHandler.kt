@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.IBinder
 import android.os.Parcel
-import moe.fuqiuluo.dobby.Dobby
 import moe.fuqiuluo.xposed.hooks.LocationServiceHook
 import moe.fuqiuluo.xposed.utils.FakeLoc
 import moe.fuqiuluo.xposed.utils.BinderUtils
@@ -16,7 +15,6 @@ object RemoteCommandHandler {
     private val proxyBinders by lazy { Collections.synchronizedList(arrayListOf<IBinder>()) }
     private val needProxyCmd = arrayOf("start", "stop", "set_speed_amp", "set_altitude", "set_speed", "update_location", "set_bearing", "move", "put_config")
     internal val randomKey by lazy { "yadea_" + java.util.UUID.randomUUID().toString() }
-    private var isLoadedLibrary = false
 
     private var ownerBinder: IBinder? = null
     private var ownerDeath: IBinder.DeathRecipient? = null
@@ -24,17 +22,21 @@ object RemoteCommandHandler {
     private val watchdog = android.os.Handler(android.os.Looper.getMainLooper())
     private val expiry = object : Runnable {
         override fun run() {
-            if (!FakeLoc.enable) return
+            if (!FakeLoc.enable && !FakeLoc.enableMockGnss && !FakeLoc.enableMockWifi) return
             if (android.os.SystemClock.uptimeMillis() - heartbeatAt > 15000L) {
                 FakeLoc.enable = false
                 FakeLoc.enableMockGnss = false
                 FakeLoc.enableMockWifi = false
+                FakeLoc.resetSessionOptions()
             } else watchdog.postDelayed(this, 3000L)
         }
     }
 
+    fun liveSession(): Boolean = ownerBinder?.isBinderAlive == true && android.os.SystemClock.uptimeMillis()-heartbeatAt <= 15000L
+
     @SuppressLint("UnsafeDynamicallyLoadedCode")
     fun handleInstruction(command: String, rely: Bundle): Boolean {
+        if (command == "peer_snapshot") return PeerBridge.serverSnapshot(rely)
         if (!BinderUtils.isLocationProviderEnabled(BinderUtils.getCallerUid())) return false
         // Exchange key -> returns a random key -> is used to verify that it is the PortalManager
         if (command == "exchange_key") {
@@ -79,6 +81,7 @@ object RemoteCommandHandler {
                         FakeLoc.enable = false
                         FakeLoc.enableMockGnss = false
                         FakeLoc.enableMockWifi = false
+                        FakeLoc.resetSessionOptions()
                         watchdog.removeCallbacks(expiry)
                     }
                 }
@@ -87,11 +90,16 @@ object RemoteCommandHandler {
                 return true
             }
             "heartbeat" -> {
+                NativeBridge.heartbeat()
                 heartbeatAt = android.os.SystemClock.uptimeMillis()
                 return true
             }
+            "capabilities" -> {
+                rely.putString("report", HookCapabilities.report()+"\n"+NativeBridge.report()+"\n只读系统进程连接："+PeerBridge.activePeers()+"\n"+PeerBridge.reports())
+                return true
+            }
             "handshake" -> {
-                rely.putInt("protocol", 1)
+                rely.putInt("protocol", 2)
                 rely.putString("engine", "yadea-portal-root")
                 return true
             }
@@ -114,9 +122,7 @@ object RemoteCommandHandler {
                 watchdog.removeCallbacks(expiry)
                 watchdog.postDelayed(expiry, 3000L)
                 FakeLoc.enable = true
-                if (isLoadedLibrary) {
-                    Dobby.setStatus(true)
-                }
+                NativeBridge.onSimulationStarted()
 
                 FakeLoc.speed = speed
                 FakeLoc.altitude = altitude
@@ -128,9 +134,7 @@ object RemoteCommandHandler {
                 watchdog.removeCallbacks(expiry)
                 FakeLoc.enable = false
                 FakeLoc.hasBearings = false
-                if (isLoadedLibrary) {
-                    Dobby.setStatus(false)
-                }
+                FakeLoc.resetSessionOptions()
                 return true
             }
             "is_start" -> {
@@ -138,6 +142,9 @@ object RemoteCommandHandler {
                 return true
             }
             "start_gnss_mock" -> {
+                if (ownerBinder?.isBinderAlive != true) return false
+                heartbeatAt=android.os.SystemClock.uptimeMillis()
+                watchdog.removeCallbacks(expiry); watchdog.postDelayed(expiry,3000L)
                 FakeLoc.enableMockGnss = true
                 return true
             }
@@ -159,6 +166,7 @@ object RemoteCommandHandler {
             }
             "stop_wifi_mock" -> {
                 FakeLoc.enableMockWifi = false
+                FakeLoc.resetSessionOptions()
                 return true
             }
             "get_location" -> {
@@ -257,6 +265,33 @@ object RemoteCommandHandler {
                 }
                 return true
             }
+            "configure_session" -> {
+                if (ownerBinder?.isBinderAlive != true) return false
+                val amplitude = rely.getDouble("speed_amplitude",0.0)
+                if (!amplitude.isFinite() || amplitude !in 0.0..100.0) return false
+                val count = rely.getInt("min_satellites", 12)
+                if (count !in 0..35) return false
+                if (!NativeBridge.enable(rely.getBoolean("native_sensor", false))) {
+                    rely.putString("error", NativeBridge.report()); FakeLoc.resetSessionOptions(); return false
+                }
+                FakeLoc.hookWifi = rely.getBoolean("wifi_filter", false)
+                FakeLoc.enableMockWifi = FakeLoc.hookWifi
+                FakeLoc.needDowngradeToCdma = rely.getBoolean("need_downgrade_to_2g", false)
+                FakeLoc.vendorFused = rely.getBoolean("vendor_fused", false)
+                FakeLoc.enableMockGnss = rely.getBoolean("mock_gnss", false)
+                FakeLoc.enableNMEA = rely.getBoolean("enable_nmea", false)
+                FakeLoc.enableAGPS = rely.getBoolean("enable_agps", false)
+                FakeLoc.enableDebugLog = rely.getBoolean("enable_debug_log", false)
+                FakeLoc.disableGetCurrentLocation = rely.getBoolean("disable_get_current_location", false)
+                FakeLoc.disableFusedLocation = rely.getBoolean("disable_fused_location", false)
+                FakeLoc.disableNetworkLocation = rely.getBoolean("disable_network_location", false)
+                FakeLoc.disableRequestGeofence = rely.getBoolean("disable_request_geofence", false)
+                FakeLoc.disableGetFromLocation = rely.getBoolean("disable_get_from_location", false)
+                FakeLoc.disableRegisterLocationListener = rely.getBoolean("disable_register_location_listener",false)
+                FakeLoc.speedAmplitude = amplitude
+                FakeLoc.minSatellites = count
+                return true
+            }
             "put_config" -> {
                 val enable = rely.getBoolean("enable", FakeLoc.enable)
                 val speed = rely.getDouble("speed", FakeLoc.speed)
@@ -268,9 +303,9 @@ object RemoteCommandHandler {
                 val disableFusedLocation = rely.getBoolean("disable_fused_location", FakeLoc.disableFusedLocation)
                 val needDowngradeToCdma = rely.getBoolean("need_downgrade_to_2g", FakeLoc.needDowngradeToCdma)
                 var minSatellites = rely.getInt("min_satellites", 12)
-                if (minSatellites < 0) {
-                    minSatellites = 12
-                }
+                if (minSatellites !in 0..35) return false
+                if (!speed.isFinite() || speed !in 0.0..100.0 || !altitude.isFinite() || altitude !in -1000.0..100000.0 || !accuracy.isFinite() || accuracy !in 0.5f..10000f) return false
+                if (enable && (ownerBinder?.isBinderAlive != true || android.os.SystemClock.uptimeMillis() - heartbeatAt > 15000L)) return false
 
                 val enableAGPS = rely.getBoolean("enable_agps", FakeLoc.enableAGPS)
                 val enableNMEA = rely.getBoolean("enable_nmea", FakeLoc.enableNMEA)
@@ -278,6 +313,8 @@ object RemoteCommandHandler {
                 val disableGetFromLocation = rely.getBoolean("disable_get_from_location", FakeLoc.disableGetFromLocation)
 
                 FakeLoc.enable = enable
+                watchdog.removeCallbacks(expiry)
+                if (enable) watchdog.postDelayed(expiry, 3000L)
                 FakeLoc.speed = speed
                 FakeLoc.altitude = altitude
                 FakeLoc.accuracy = accuracy

@@ -22,27 +22,22 @@ abstract class BaseLocationHook: BaseDivineService() {
             ) {
                 FakeLoc.lastLocation = originLocation
             }
-        } else {
-            originLocation.altitude = FakeLoc.altitude
         }
 
         if (!FakeLoc.enable)
             return originLocation
 
 
-        if (FakeLoc.disableNetworkLocation && originLocation.provider == LocationManager.NETWORK_PROVIDER) {
-            originLocation.provider = LocationManager.GPS_PROVIDER
-        }
-
-        val location = Location(originLocation.provider ?: LocationManager.GPS_PROVIDER)
+        val provider = if (FakeLoc.disableNetworkLocation && originLocation.provider == LocationManager.NETWORK_PROVIDER) LocationManager.GPS_PROVIDER else originLocation.provider ?: LocationManager.GPS_PROVIDER
+        val location = Location(provider)
         location.accuracy = if (FakeLoc.accuracy != 0.0f) FakeLoc.accuracy else originLocation.accuracy
         val coordinates = FakeLoc.coordinatesSnapshot()
         val jitterLat = FakeLoc.jitterLocation(lat = coordinates.first, lon = coordinates.second)
         location.latitude = jitterLat.first
         location.longitude = jitterLat.second
         location.altitude = FakeLoc.altitude
-        val speedAmp = if (FakeLoc.speedAmplitude > 0) Random.nextDouble(-FakeLoc.speedAmplitude, FakeLoc.speedAmplitude) else 0.0
-        location.speed = (FakeLoc.speed + speedAmp).coerceAtLeast(0.0).toFloat()
+        val speedAmp = if (FakeLoc.speed > 0 && FakeLoc.speedAmplitude > 0) Random.nextDouble(-FakeLoc.speedAmplitude, FakeLoc.speedAmplitude) else 0.0
+        location.speed = (FakeLoc.speed + speedAmp).coerceIn(0.0,100.0).toFloat()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && originLocation.hasSpeedAccuracy()) {
             location.speedAccuracyMetersPerSecond = 1.0f
         }
@@ -143,105 +138,11 @@ abstract class BaseLocationHook: BaseDivineService() {
     }
 
     fun injectNMEA(nmeaStr: String): String? {
-        if (!FakeLoc.enable) {
-            return null
-        }
-
-        kotlin.runCatching {
-            val nmea = NMEA.valueOf(nmeaStr)
-            when(val value = nmea.value) {
-                is NmeaValue.DTM -> {
-                    return null
-                }
-                is NmeaValue.GGA -> {
-                    if (value.latitude == null || value.longitude == null) {
-                        return null
-                    }
-
-                    if (value.fixQuality == 0) {
-                        return null
-                    }
-
-                    val latitudeHemisphere = if (FakeLoc.latitude >= 0) "N" else "S"
-                    val longitudeHemisphere = if (FakeLoc.longitude >= 0) "E" else "W"
-
-                    value.latitudeHemisphere = latitudeHemisphere
-                    value.longitudeHemisphere = longitudeHemisphere
-
-                    var degree = FakeLoc.latitude.toInt()
-                    var minute = (FakeLoc.latitude - degree) * 60
-                    value.latitude = degree + minute / 100
-
-                    degree = FakeLoc.longitude.toInt()
-                    minute = (FakeLoc.longitude - degree) * 60
-                    value.longitude = degree + minute / 100
-
-                    return value.toNmeaString()
-                }
-                is NmeaValue.GNS -> {
-                    if (value.latitude == null || value.longitude == null) {
-                        return null
-                    }
-
-                    if (value.mode == "N") {
-                        return null
-                    }
-
-                    val latitudeHemisphere = if (FakeLoc.latitude >= 0) "N" else "S"
-                    val longitudeHemisphere = if (FakeLoc.longitude >= 0) "E" else "W"
-
-                    value.latitudeHemisphere = latitudeHemisphere
-                    value.longitudeHemisphere = longitudeHemisphere
-
-                    var degree = FakeLoc.latitude.toInt()
-                    var minute = (FakeLoc.latitude - degree) * 60
-                    value.latitude = degree + minute / 100
-
-                    degree = FakeLoc.longitude.toInt()
-                    minute = (FakeLoc.longitude - degree) * 60
-                    value.longitude = degree + minute / 100
-
-                    return value.toNmeaString()
-                }
-                is NmeaValue.GSA -> {
-                    return null
-                }
-                is NmeaValue.GSV -> {
-                    return null
-                }
-                is NmeaValue.RMC -> {
-                    if (value.latitude == null || value.longitude == null) {
-                        return null
-                    }
-
-                    if (value.status == "V") {
-                        return null
-                    }
-
-                    val latitudeHemisphere = if (FakeLoc.latitude >= 0) "N" else "S"
-                    val longitudeHemisphere = if (FakeLoc.longitude >= 0) "E" else "W"
-
-                    value.latitudeHemisphere = latitudeHemisphere
-                    value.longitudeHemisphere = longitudeHemisphere
-
-                    var degree = FakeLoc.latitude.toInt()
-                    var minute = (FakeLoc.latitude - degree) * 60
-                    value.latitude = degree + minute / 100
-
-                    degree = FakeLoc.longitude.toInt()
-                    minute = (FakeLoc.longitude - degree) * 60
-                    value.longitude = degree + minute / 100
-
-                    return value.toNmeaString()
-                }
-                is NmeaValue.VTG -> {
-                    return null
-                }
-            }
-        }.onFailure {
-            Logger.error("NMEA parse failed: ${it.message}, source = $nmeaStr")
-            return null
-        }
-        return null
+        if (!FakeLoc.enable || !FakeLoc.enableNMEA) return null
+        val (latitude, longitude) = FakeLoc.coordinatesSnapshot()
+        return runCatching {
+            moe.microbios.nmea.NmeaRewriter.rewrite(nmeaStr, latitude, longitude,
+                FakeLoc.altitude, FakeLoc.speed, FakeLoc.bearing, FakeLoc.minSatellites.coerceIn(0, 35))
+        }.getOrNull()
     }
 }

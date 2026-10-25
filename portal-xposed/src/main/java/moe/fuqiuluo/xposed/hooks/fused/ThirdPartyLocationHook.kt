@@ -21,6 +21,9 @@ object ThirdPartyLocationHook: BaseLocationHook() {
             return
         }
 
+        val candidates=listOf("com.amap.android.location.NetworkLocationManager","com.baidu.location.LocationClient","com.tencent.geolocation.nlp.TencentNLPManager")
+        val available=candidates.filter { XposedHelpers.findClassIfExists(it,classLoader)!=null }
+        moe.fuqiuluo.xposed.HookCapabilities.record("vendor_fused",if(available.isEmpty()) "未匹配厂商 SDK 类，透传" else "匹配类："+available.joinToString { it.substringAfterLast('.') })
         // There is a certain probability that the positioning SDK will exchange data directly with these services
         // instead of ... through the system
         hookAMapNetLocManager(classLoader)
@@ -42,7 +45,7 @@ object ThirdPartyLocationHook: BaseLocationHook() {
 
                 Logger.debug("NetworkLocationManager.onSendExtraCommand: $cmd, $extras")
             }
-            if (FakeLoc.enable) {
+            if (FakeLoc.enable && FakeLoc.vendorFused) {
                 this.result = false
             }
         }
@@ -57,20 +60,6 @@ object ThirdPartyLocationHook: BaseLocationHook() {
         listenerField.forEach {
             it.isAccessible = true
         }
-        cNetworkLocationManager.onceHookMethodBefore("requestLocationUpdates") {
-            if (FakeLoc.enable) {
-                if(this.args[1] is LocationListener) {
-                    this.args[1] = null // 拒绝高德地图注册私有listener
-                }
-                listenerField.forEach { it.set(thisObject, null) }
-                boolFields.forEach { it.setBoolean(thisObject, false) }
-            }
-        }
-
-        cNetworkLocationManager.hookMethodBefore("updateOffLocEnable") {
-            this.result = Unit
-        }
-
         BlindHookLocation(cNetworkLocationManager, classLoader)
     }
 
@@ -83,7 +72,7 @@ object ThirdPartyLocationHook: BaseLocationHook() {
             }
 
             bdLocationClient.hookMethodAfter("requestNLPNormal") {
-                if (FakeLoc.enable) {
+                if (FakeLoc.enable && FakeLoc.vendorFused) {
                     val bdLocation = result ?: return@hookMethodAfter
 
                     val jitterLat = FakeLoc.jitterLocation()

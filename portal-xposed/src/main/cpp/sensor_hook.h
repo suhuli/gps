@@ -1,19 +1,8 @@
-//
-// Created by fuqiuluo on 2024/10/15.
-//
+#pragma once
+#include <cstdint>
+bool installSensorHook();
+void setSensorEnabled(bool value);
+int sensorHookStatus();
+uint64_t sensorRewriteCount();
 
-#ifndef PORTAL_SENSOR_HOOK_H
-#define PORTAL_SENSOR_HOOK_H
-
-#include "android/sensor.h"
-
-// ssize_t SensorEventQueue::write(const sp<BitTube>& tube,
-//        ASensorEvent const* events, size_t numEvents)
-typedef int64_t (*OriginalSensorEventQueueWriteType)(void*, void*, int64_t);
-
-// void convertToSensorEvent(const Event &src, sensors_event_t *dst);
-typedef void (*OriginalConvertToSensorEventType)(void*, void*);
-
-void doSensorHook();
-
-#endif //PORTAL_SENSOR_HOOK_H
+void sensorHeartbeat();

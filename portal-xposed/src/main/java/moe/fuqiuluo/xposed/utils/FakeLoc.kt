@@ -18,7 +18,7 @@ object FakeLoc {
     /**
      * 是否允许打印调试日志
      */
-    var enableDebugLog = false
+    @Volatile var enableDebugLog = false
 
     /**
      * 模拟定位服务开关
@@ -41,31 +41,31 @@ object FakeLoc {
     /**
      * 是否禁用GetCurrentLocation方法（在部分系统不禁用可能导致hook失效）
      */
-    var disableGetCurrentLocation = false
+    @Volatile var disableGetCurrentLocation = false
 
     /**
      * 是否禁用RegisterLocationListener方法
      */
-    var disableRegisterLocationListener = false
+    @Volatile var disableRegisterLocationListener = false
 
     /**
      * 如果TelephonyHook失效，可能需要打开此开关
      */
-    var disableFusedLocation = false
-    var disableNetworkLocation = false
+    @Volatile var disableFusedLocation = false
+    @Volatile var disableNetworkLocation = false
 
-    var disableRequestGeofence = false
-    var disableGetFromLocation = false
+    @Volatile var disableRequestGeofence = false
+    @Volatile var disableGetFromLocation = false
 
     /**
      * 是否允许AGPS模块（当前没什么鸟用）
      */
-    var enableAGPS = false
+    @Volatile var enableAGPS = false
 
     /**
      * 是否允许NMEA模块
      */
-    var enableNMEA = false
+    @Volatile var enableNMEA = false
 
     /**
      * 是否隐藏模拟位置
@@ -80,13 +80,14 @@ object FakeLoc {
     /**
      * 将网络定位降级为Cdma
      */
-    var needDowngradeToCdma = false
+    @Volatile var needDowngradeToCdma = false
+    @Volatile var vendorFused = false
     var isSystemServerProcess = false
 
     /**
      * 模拟最小卫星数量
      */
-    var minSatellites = 12
+    @Volatile var minSatellites = 12
 
     /**
      * 反定位复原加强（启用后将导致部分应用在关闭Portal后需要重新启动才能重新获取定位）
@@ -136,6 +137,15 @@ object FakeLoc {
                 value
             }
         }
+
+    fun resetSessionOptions() {
+        moe.fuqiuluo.xposed.NativeBridge.enable(false)
+        enableMockGnss = false; enableMockWifi = false; enableNMEA = false; enableAGPS = false
+        enableDebugLog = false; disableGetCurrentLocation = false; disableRegisterLocationListener = false
+        disableFusedLocation = false; disableNetworkLocation = false; disableRequestGeofence = false
+        disableGetFromLocation = false; hookWifi = false; needDowngradeToCdma = false; vendorFused = false
+        minSatellites = 12; speedAmplitude = 0.0
+    }
 
     fun haversine(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val radius = 6371000.0

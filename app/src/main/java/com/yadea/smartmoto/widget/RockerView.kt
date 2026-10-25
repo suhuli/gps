@@ -313,6 +313,8 @@ class RockerView(context: Context, attrs: AttributeSet) :
         val lenY = (touchPoint.y - centerPoint.y).toFloat()
         // 两点距离
         val lenXY = sqrt((lenX * lenX + lenY * lenY).toDouble()).toFloat()
+        // Center touches have no bearing; avoid acos(NaN) / roundToInt crashes.
+        if (lenXY <= 0.001f) return Point(centerPoint)
         // 计算弧度
         val radian =
             acos((lenX / lenXY).toDouble()) * if (touchPoint.y < centerPoint.y) -1 else 1

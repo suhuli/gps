@@ -8,7 +8,7 @@
     <com.yadea.smartmoto.widget.RockerView
         android:id="@+id/rocker_view"
         android:layout_width="100dp"
-        android:layout_height="100dp"
+        android:layout_height="150dp"
         app:areaBackground="@color/black_30"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
@@ -31,11 +31,21 @@
             android:layout_marginTop="5dp"
             android:textColor="@color/white"
             android:textSize="10sp"
-            app:layout_constraintBottom_toTopOf="@id/speed_view"
+            app:layout_constraintBottom_toTopOf="@id/root_motion_options"
             app:layout_constraintLeft_toLeftOf="parent"
             app:layout_constraintRight_toLeftOf="@id/iv_close"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintVertical_chainStyle="spread_inside" />
+
+        <LinearLayout
+            android:id="@+id/root_motion_options"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintTop_toBottomOf="@id/tv_info"
+            app:layout_constraintBottom_toTopOf="@id/speed_view">
+            <CheckBox android:id="@+id/root_continuous" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="连续" android:textSize="11sp" android:textColor="@color/white" android:minHeight="28dp" />
+            <CheckBox android:id="@+id/root_direction_lock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="锁向" android:textSize="11sp" android:textColor="@color/white" android:minHeight="28dp" />
+        </LinearLayout>
 
         <com.yadea.smartmoto.widget.RegulateView
             android:id="@+id/speed_view"
@@ -47,7 +57,7 @@
             app:layout_constraintHorizontal_bias="0"
             app:layout_constraintLeft_toLeftOf="parent"
             app:layout_constraintRight_toRightOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/tv_info" />
+            app:layout_constraintTop_toBottomOf="@id/root_motion_options" />
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/iv_close"

@@ -43,6 +43,9 @@ with zipfile.ZipFile(apk) as archive:
     if os.environ['SOURCE_BRANCH'] == 'test':
         if 'xposedmodule' not in manifest or 'moe.fuqiuluo.xposed.FakeLocation' not in archive.read('assets/xposed_init').decode():
             raise SystemExit('Root module metadata/entry point missing from built APK')
+        for abi in ['armeabi-v7a', 'arm64-v8a']:
+            if f'lib/{abi}/libportal.so' not in archive.namelist():
+                raise SystemExit('Bundled Portal native library missing: '+abi)
 
     forbidden = [legacy.encode(), legacy.replace('.', '/').encode(), b'www.' + b'pgyer.com', b'/apiv2/app/' + b'check']
     for entry in archive.namelist():
