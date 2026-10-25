@@ -7,11 +7,9 @@ on:
         description: Source branch to build
         required: true
         type: choice
-        default: dev
+        default: main
         options:
-          - dev
           - main
-          - feature/dual-map
       application_id:
         description: Android package name (lowercase, dotted)
         required: true
@@ -59,6 +57,11 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
+      - name: Require the main branch
+        if: github.ref != 'refs/heads/main'
+        run: echo "Only main may be built"; exit 1
+        working-directory: ${{ github.workspace }}
+
       - name: Check out trusted workflow helper scripts
         uses: actions/checkout@v4
         with:
@@ -69,7 +72,7 @@ jobs:
       - name: Check out selected source branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_branch }}
+          ref: ${{ github.sha }}
           path: source
           persist-credentials: false
 

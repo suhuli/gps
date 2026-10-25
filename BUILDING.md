@@ -27,9 +27,9 @@
 
 ## Actions
 
-工作流和辅助脚本必须一并更新，再构建已同步的源分支；旧 main/dev 源码不能直接套用新版配置脚本。
+仓库仅保留 main 主线，Actions 仅允许构建 main；源码与辅助脚本固定到同一工作流提交。
 
-在 **Build Android APK → Run workflow** 中选择源分支、包名、构建类型，可填写：
+在 **Build Android APK → Run workflow** 中保持唯一的 main 源分支，选择包名、构建类型，可填写：
 
 - `baidu_map_key`：百度 Android Key；留空读取 `BAIDU_MAP_KEY` Secret。
 - `amap_map_key`：高德 Android Key；留空读取 `AMAP_MAP_KEY` Secret。
@@ -117,3 +117,7 @@ ANDROID_KEY_PASSWORD
 ## beta4 启动界面
 
 使用用户提供的图标，包含常规多密度与自适应启动图标。首次使用先显示“进入雅迪智行”及未默认勾选的隐私同意，再选择地图。选择成功后记住配置，下次直接进入主界面。独立的隐私弹页已移除，勾选同意之前不初始化地图 SDK。设置可切换地图或撤回同意；必要定位/模拟位置权限缺失时才重新显示引导。已有同意与地图配置可沿用。地图 Key 与固定证书不变。
+
+## 唯一主线基准
+
+当前唯一主线版本为 2.6.0-beta4 / 262，用户已验证。旧分支、旧版本标签和旧 Actions 构建已清理，Git 提交历史保留。唯一 Release v2.6.0-beta4 永久保存用户已验证的原始 APK；Actions 附件仍按保留期过期。没有更改应用代码、地图 Secrets 或固定证书。本次仅维护构建入口和说明文档，不产生新应用版本。

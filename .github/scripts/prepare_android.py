@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 application_id = os.environ['APPLICATION_ID'].strip()
-if os.environ.get('SOURCE_BRANCH') not in ('main', 'dev', 'feature/dual-map'):
+if os.environ.get('SOURCE_BRANCH') != 'main':
     raise SystemExit('Unsupported source branch')
 if len(application_id) > 200 or not re.fullmatch(r'[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+', application_id):
     raise SystemExit('application_id must be a lowercase dotted Android package name, for example com.yadea.smartmoto')
