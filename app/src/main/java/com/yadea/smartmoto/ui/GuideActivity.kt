@@ -46,6 +46,27 @@ class GuideActivity : BaseActivity<ActivityGuideBinding, BaseViewModel>(), View.
 
     override fun initView() {
         ClickUtils.applySingleDebouncing(dataBinding.btnGo, this)
+        dataBinding.privacyConsent.isChecked = com.yadea.smartmoto.maps.MapPreferences.consented(this)
+        val policies = android.text.SpannableString("使用说明  ·  百度隐私政策  ·  高德隐私政策")
+        fun link(label: String, action: () -> Unit) {
+            val start = policies.toString().indexOf(label)
+            policies.setSpan(object : android.text.style.ClickableSpan() {
+                override fun onClick(widget: View) { action() }
+            }, start, start + label.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        link("使用说明") {
+            AlertDialog.Builder(this).setTitle("使用说明")
+                .setMessage("雅迪智行提供地图选点、搜索、路线规划与系统模拟定位。勾选同意并选择地图后才初始化对应 SDK；相关服务可能处理位置、设备与网络信息。地点历史保存在本机；可从通知停止模拟，在设置中撤回同意。请勿用于违法或未经授权的用途。")
+                .setPositiveButton("知道了", null).show()
+        }
+        fun openPolicy(url: String) {
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
+                .onFailure { ToastUtils.showShort("无法打开浏览器") }
+        }
+        link("百度隐私政策") { openPolicy("https://lbsyun.baidu.com/index.php?title=openprivacy") }
+        link("高德隐私政策") { openPolicy("https://lbs.amap.com/pages/privacy/") }
+        dataBinding.privacyLinks.text = policies
+        dataBinding.privacyLinks.movementMethod = android.text.method.LinkMovementMethod.getInstance()
     }
 
     override fun initData() {
@@ -108,6 +129,11 @@ class GuideActivity : BaseActivity<ActivityGuideBinding, BaseViewModel>(), View.
     override fun onClick(v: View?) {
         when (v) {
             dataBinding.btnGo -> {
+                if (!dataBinding.privacyConsent.isChecked) {
+                    ToastUtils.showShort("请先阅读并勾选同意使用说明与隐私政策")
+                    return
+                }
+                com.yadea.smartmoto.maps.MapPreferences.prefs(this).edit().putBoolean("privacy_v1", true).apply()
                 //权限
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !checkPermission()) {
                     return
@@ -141,7 +167,8 @@ class GuideActivity : BaseActivity<ActivityGuideBinding, BaseViewModel>(), View.
                         .show()
                     return
                 }
-                startActivity(Intent(this, MainActivity::class.java))
+                com.yadea.smartmoto.maps.MapPreferences.prefs(this).edit().putBoolean("intro_done", true).apply()
+                startActivity(Intent(this, MapEntryActivity::class.java).putExtra("switch_map", intent.getBooleanExtra("switch_map", false)))
                 finish()
             }
 

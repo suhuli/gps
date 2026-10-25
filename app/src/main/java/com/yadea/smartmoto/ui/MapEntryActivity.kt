@@ -1,86 +1,132 @@
 package com.yadea.smartmoto.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
-import android.net.Uri
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.button.MaterialButton
+import com.yadea.smartmoto.R
 import com.yadea.smartmoto.maps.MapPreferences
 import com.yadea.smartmoto.manager.SearchManager
 import com.yadea.smartmoto.server.GpsService
+import com.yadea.smartmoto.utils.Utils
 
-/** No MapView, location client or search instance exists on this screen. */
+/** Routing and selection only. Never initializes a map SDK without prior consent. */
 class MapEntryActivity : AppCompatActivity() {
     private var switching = false
+    private var chosen: MapPreferences.Provider? = null
+    private val blue = Color.rgb(63, 129, 193)
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+    private fun label(value: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
+        text = value; textSize = size; setTextColor(color)
+        if (bold) setTypeface(typeface, Typeface.BOLD)
+    }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         switching = intent.getBooleanExtra("switch_map", false)
-        if (!MapPreferences.consented(this)) showPrivacy() else showSelection()
-    }
-    private fun showPrivacy() {
-        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 24, 48, 16) }
-        content.addView(TextView(this).apply {
-            text = "雅迪智行提供地图选点、搜索、路线规划和系统模拟定位。\n\n仅在你同意并选择地图后初始化相应服务。地图、搜索和定位由百度或高德 SDK 提供；使用相关功能时，相应服务可能处理位置、设备与网络信息。仅在使用时申请必要权限。\n\n路线历史保存在本机；停止模拟可从常驻通知操作。模拟位置可能被其他应用识别。\n\n你可在设置中撤回同意并清除本应用的地点历史与地图偏好。请同时阅读所选服务的隐私政策。"
-            setTextColor(Color.DKGRAY); textSize = 15f
-        })
-        listOf("百度地图隐私政策" to "https://lbsyun.baidu.com/index.php?title=openprivacy",
-            "高德地图隐私政策" to "https://lbs.amap.com/pages/privacy/").forEach { (title, url) ->
-            content.addView(Button(this).apply { text = title; setOnClickListener {
-                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-                    .onFailure { Toast.makeText(this@MapEntryActivity, "无法打开浏览器", Toast.LENGTH_SHORT).show() }
-            } })
+        val prefs = MapPreferences.prefs(this)
+        val saved = prefs.getString("last_selected", null)?.let { name ->
+            runCatching { MapPreferences.Provider.valueOf(name) }.getOrNull()
+        } ?: MapPreferences.remembered(this)
+        val locationReady = Build.VERSION.SDK_INT < 23 || ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val destination = com.yadea.smartmoto.maps.EntryRouter.destination(
+            MapPreferences.consented(this), locationReady, Utils.isAllowMockLocation(this), saved != null, switching)
+        if (destination == com.yadea.smartmoto.maps.EntryRouter.Destination.GUIDE) {
+            startActivity(Intent(this, GuideActivity::class.java).putExtra("switch_map", switching))
+            finish(); return
         }
-        val scroll = ScrollView(this).apply { addView(content) }
-        AlertDialog.Builder(this).setTitle("隐私与使用说明").setView(scroll).setCancelable(false)
-            .setNegativeButton("不同意并退出") { _, _ -> finish() }
-            .setPositiveButton("已阅读并同意") { _, _ ->
-                MapPreferences.prefs(this).edit().putBoolean("privacy_v1", true).apply(); showSelection()
-            }.show()
+        // Existing users with valid consent/provider do not need to repeat onboarding.
+        if (destination == com.yadea.smartmoto.maps.EntryRouter.Destination.MAIN && saved != null) { enter(saved); return }
+        chosen = state?.getString("chosen")?.let { runCatching { MapPreferences.Provider.valueOf(it) }.getOrNull() } ?: saved
+        showSelection()
+    }
+    override fun onSaveInstanceState(out: Bundle) {
+        chosen?.let { out.putString("chosen", it.name) }
+        super.onSaveInstanceState(out)
     }
     private fun showSelection() {
-        if (!switching) MapPreferences.remembered(this)?.let { enter(it, true); return }
-        val dp = resources.displayMetrics.density
         val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            setPadding((28 * dp).toInt(), 0, (28 * dp).toInt(), 0)
-            setBackgroundColor(Color.rgb(245, 248, 253))
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(20), dp(24), dp(24))
+            setBackgroundColor(Color.rgb(245, 248, 252))
         }
-        root.addView(TextView(this).apply { text = "雅迪智行"; textSize = 30f; setTextColor(Color.rgb(20, 45, 74)); gravity = Gravity.CENTER })
-        root.addView(TextView(this).apply { text = "选择地图服务\n地图、地点搜索与路线规划一起切换"; textSize = 15f; gravity = Gravity.CENTER; setPadding(0, 24, 0, 32) })
-        val remember = CheckBox(this).apply { text = "记住选择，下次直接进入"; isChecked = MapPreferences.remembered(this@MapEntryActivity) != null }
+        val scroll = ScrollView(this).apply { isFillViewport = true; addView(root) }
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom); insets
+        }
+        val brand = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        brand.addView(ImageView(this).apply { setImageResource(R.mipmap.ic_launcher); contentDescription = "雅迪智行" }, LinearLayout.LayoutParams(dp(44), dp(44)))
+        brand.addView(label("雅迪智行", 18f, Color.rgb(32, 54, 75), true), LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(12) })
+        root.addView(brand)
+        root.addView(label("选择你的地图", 28f, Color.rgb(32, 54, 75), true), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(36) })
+        root.addView(label("选点、搜索与路线规划，统一随地图切换", 14f, Color.rgb(113, 131, 152)), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12); bottomMargin = dp(28) })
+        val cards = mutableMapOf<MapPreferences.Provider, MaterialCardView>()
+        val radios = mutableMapOf<MapPreferences.Provider, RadioButton>()
+        val action = MaterialButton(this).apply { text = "开始使用"; textSize = 16f; cornerRadius = dp(28); setTextColor(Color.WHITE); backgroundTintList = android.content.res.ColorStateList.valueOf(blue) }
+        fun refresh() {
+            cards.forEach { (provider, card) ->
+                val selected = chosen == provider
+                card.strokeColor = if (selected) blue else Color.rgb(226, 233, 241)
+                card.strokeWidth = dp(if (selected) 2 else 1)
+                card.setCardBackgroundColor(if (selected) Color.rgb(238, 246, 255) else Color.WHITE)
+                card.isSelected = selected; radios[provider]?.isChecked = selected
+            }
+            action.isEnabled = chosen != null; action.alpha = if (chosen != null) 1f else 0.45f
+        }
         MapPreferences.Provider.values().forEach { provider ->
-            root.addView(Button(this).apply {
-                text = "使用${provider.title}"; textSize = 18f
-                setOnClickListener { enter(provider, remember.isChecked) }
-            }, LinearLayout.LayoutParams(-1, (60 * dp).toInt()).apply { bottomMargin = (12 * dp).toInt() })
+            val card = MaterialCardView(this).apply { radius = dp(20).toFloat(); cardElevation = 0f; isClickable = true; isFocusable = true }
+            val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(22), dp(16), dp(20)) }
+            val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+            row.addView(label(if (provider == MapPreferences.Provider.BAIDU) "百" else "高", 22f, blue, true).apply {
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply { setColor(Color.rgb(226, 239, 253)); cornerRadius = dp(14).toFloat() }
+            }, LinearLayout.LayoutParams(dp(48), dp(48)))
+            val words = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, 0, 0) }
+            words.addView(label(provider.title, 19f, Color.rgb(32, 54, 75), true))
+            words.addView(label("地图 · 搜索 · 路线", 12f, Color.rgb(113, 131, 152)).apply { setPadding(0, dp(6), 0, 0) })
+            row.addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            val radio = RadioButton(this).apply { isClickable = false; isFocusable = false; importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO; buttonTintList = android.content.res.ColorStateList.valueOf(blue) }
+            row.addView(radio); radios[provider] = radio
+            content.addView(row)
+            content.addView(label(if (provider == MapPreferences.Provider.BAIDU) "支持步行、骑行、驾车等路线规划" else "支持步行、骑行与驾车；暂无电动车专用路线", 12f, Color.rgb(113, 131, 152)).apply { setPadding(0, dp(18), 0, 0) })
+            card.addView(content); cards[provider] = card
+            card.contentDescription = "${provider.title}，点按选择"
+            card.setOnClickListener { chosen = provider; refresh() }
+            root.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
         }
-        root.addView(remember)
-        root.addView(TextView(this).apply { text = "可在设置中切换；高德电动车专用路线暂不可用"; textSize = 12f; gravity = Gravity.CENTER; setPadding(0, 24, 0, 0) })
-        setContentView(root)
+        root.addView(label("自动记住本次选择，下次直接进入主界面。\n可随时在「扩展功能 → 模拟功能设置」中切换。", 13f, Color.rgb(113, 131, 152)).apply { setLineSpacing(dp(5).toFloat(), 1f) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8); bottomMargin = dp(24) })
+        action.setOnClickListener { chosen?.let { enter(it) } }
+        root.addView(action, LinearLayout.LayoutParams(-1, dp(58)))
+        refresh(); setContentView(scroll); ViewCompat.requestApplyInsets(scroll)
     }
-    private fun enter(provider: MapPreferences.Provider, remember: Boolean) {
-        if (GpsService.isRunning && !switching) {
-            AlertDialog.Builder(this).setTitle("当前有模拟任务")
-                .setMessage("重新选择地图将停止当前模拟。也可以返回原任务继续使用。")
-                .setNegativeButton("返回原任务") { _, _ -> startActivity(Intent(this, MainActivity::class.java)); finish() }
-                .setPositiveButton("停止并进入") { _, _ -> switching = true; enter(provider, remember) }.show()
-            return
-        }
+    private fun enter(provider: MapPreferences.Provider) {
         try {
             if (switching) {
                 stopService(Intent(this, GpsService::class.java))
                 SearchManager.INSTANCE.cancel(); SearchManager.INSTANCE.polylineList.clear()
             }
-            MapPreferences.select(this, provider, remember)
-            startActivity(Intent(this, GuideActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            })
+            MapPreferences.select(this, provider, true)
+            MapPreferences.prefs(this).edit().putBoolean("setup_complete", true).apply()
+            startActivity(Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK })
             finish()
         } catch (e: Exception) {
-            Toast.makeText(this, if (e is com.yadea.smartmoto.maps.MapConfigurationException) e.message else "${provider.title}初始化失败，请检查 SDK 和配置后重试", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, if (e is com.yadea.smartmoto.maps.MapConfigurationException) e.message else "${provider.title}初始化失败，请检查配置后重试", Toast.LENGTH_LONG).show()
+            if (isFinishing.not()) showSelection()
         }
     }
 }
