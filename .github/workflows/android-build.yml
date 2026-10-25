@@ -10,6 +10,7 @@ on:
         default: main
         options:
           - main
+          - test
       application_id:
         description: Android package name (lowercase, dotted)
         required: true
@@ -57,9 +58,9 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
-      - name: Require the main branch
-        if: github.ref != 'refs/heads/main'
-        run: echo "Only main may be built"; exit 1
+      - name: Require an allowed branch
+        if: github.ref != 'refs/heads/main' && github.ref != 'refs/heads/test'
+        run: echo "Only main or test may be built"; exit 1
         working-directory: ${{ github.workspace }}
 
       - name: Check out trusted workflow helper scripts
@@ -90,6 +91,10 @@ jobs:
 
       - name: Install required Android SDK packages
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Verify root migration source guardrails
+        if: inputs.source_branch == 'test'
+        run: python3 ../ci-config/.github/scripts/verify_root_source.py
 
       - name: Prepare package name and fixed signing certificate
         env:
@@ -129,7 +134,7 @@ jobs:
       - name: Upload APK and public signing fingerprints
         uses: actions/upload-artifact@v4
         with:
-          name: yadea-smartmoto-${{ inputs.build_type }}-${{ github.run_number }}
+          name: yadea-smartmoto-${{ inputs.source_branch }}-${{ inputs.build_type }}-${{ github.run_number }}
           path: source/artifacts/
           if-no-files-found: error
           retention-days: 14

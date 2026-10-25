@@ -3,10 +3,10 @@ ext {
             compileSdkVersion: 35,
             buildToolsVersion: '35.0.0',
             applicationId    : 'com.yadea.smartmoto',
-            minSdkVersion    : 21,
+            minSdkVersion    : 26,
             targetSdkVersion : 35,
-            versionCode      : 262,
-            versionName      : '2.6.0-beta4',
+            versionCode      : 263,
+            versionName      : '2.7.0-root-alpha1',
             map_key          : System.getenv('BAIDU_MAP_KEY') ?: '',
             amap_key         : System.getenv('AMAP_MAP_KEY') ?: '',
     ]

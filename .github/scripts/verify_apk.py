@@ -40,6 +40,10 @@ for key_name, env_name in [('com.baidu.lbsapi.API_KEY', 'BAIDU_MAP_KEY'), ('com.
     if not expected_key or not matching or (expected_key and not any('"' + expected_key + '"' in block for block in matching)):
         raise SystemExit('Compiled map credential does not match the requested build configuration: ' + env_name)
 with zipfile.ZipFile(apk) as archive:
+    if os.environ['SOURCE_BRANCH'] == 'test':
+        if 'xposedmodule' not in manifest or 'moe.fuqiuluo.xposed.FakeLocation' not in archive.read('assets/xposed_init').decode():
+            raise SystemExit('Root module metadata/entry point missing from built APK')
+
     forbidden = [legacy.encode(), legacy.replace('.', '/').encode(), b'www.' + b'pgyer.com', b'/apiv2/app/' + b'check']
     for entry in archive.namelist():
         if re.fullmatch(r'classes\d*\.dex', entry):

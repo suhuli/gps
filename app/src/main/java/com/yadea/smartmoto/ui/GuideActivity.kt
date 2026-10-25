@@ -145,26 +145,8 @@ class GuideActivity : BaseActivity<ActivityGuideBinding, BaseViewModel>(), View.
                     ToastUtils.showLong("建议允许通知，以便暂停或停止后台模拟；授权后请再次点击进入")
                     return
                 }
-                //模拟导航设置
                 if (!Utils.isAllowMockLocation(this)) {
-                    AlertDialog.Builder(this)
-                        .setTitle("警告")
-                        .setMessage("将本应用设置为\"模拟位置信息应用\"，否则无法正常使用")
-                        .setPositiveButton(
-                            "设置"
-                        ) { _, _ ->
-                            try {
-                                startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).apply {
-                                    this.flags = FLAG_ACTIVITY_NEW_TASK
-                                })
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                                ToastUtils.showShort("跳转开发者选项页面失败，请开启开发者模式！")
-                            }
-                        }.setNegativeButton(
-                            "取消"
-                        ) { _, _ -> }
-                        .show()
+                    startActivity(Intent(this, RootEngineActivity::class.java))
                     return
                 }
                 com.yadea.smartmoto.maps.MapPreferences.prefs(this).edit().putBoolean("intro_done", true).apply()

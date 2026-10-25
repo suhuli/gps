@@ -7,12 +7,16 @@ from pathlib import Path
 import re
 
 application_id = os.environ['APPLICATION_ID'].strip()
-if os.environ.get('SOURCE_BRANCH') != 'main':
+if os.environ.get('SOURCE_BRANCH') not in ('main', 'test'):
     raise SystemExit('Unsupported source branch')
 if len(application_id) > 200 or not re.fullmatch(r'[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+', application_id):
     raise SystemExit('application_id must be a lowercase dotted Android package name, for example com.yadea.smartmoto')
 if os.environ['BUILD_TYPE'] not in ('debug', 'release'):
     raise SystemExit('Unsupported build type')
+if os.environ['SOURCE_BRANCH'] != os.environ.get('GITHUB_REF_NAME', os.environ['SOURCE_BRANCH']):
+    raise SystemExit('Dispatch ref must match source_branch; no cross-branch builds')
+if os.environ['SOURCE_BRANCH'] == 'test' and application_id != 'com.yadea.smartmoto':
+    raise SystemExit('Root controller uses the fixed project identity')
 required = ('ANDROID_KEYSTORE_BASE64', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD')
 if any(not os.environ.get(name) for name in required):
     raise SystemExit('Missing fixed-signing repository Secrets. No temporary signing fallback is allowed.')

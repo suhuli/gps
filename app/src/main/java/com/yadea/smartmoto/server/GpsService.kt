@@ -16,7 +16,6 @@ import android.content.Intent
 import android.location.Criteria
 import android.location.Location
 import android.location.LocationManager
-import android.location.provider.ProviderProperties
 import android.os.*
 import com.baidu.mapapi.model.LatLng
 import com.blankj.utilcode.util.ToastUtils
@@ -285,7 +284,7 @@ class GpsService : Service() {
         if (!MapPreferences.consented(this) || !Utils.isAllowMockLocation(this) ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
             !Utils.checkFloatWindow(this)) {
-            ToastUtils.showLong("无法启动：请检查隐私同意、精确定位、模拟定位和悬浮窗权限")
+            ToastUtils.showLong("无法启动：请检查隐私同意、精确定位、Root 模块和悬浮窗权限")
             stopSelf(); return START_NOT_STICKY
         }
         try {
@@ -323,7 +322,7 @@ class GpsService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_location)
             .setContentTitle("雅迪智行 · ${MapPreferences.selected?.title ?: "模拟定位"}")
-            .setContentText(if (isStart) "模拟定位运行中" else "模拟已暂停，可恢复或停止")
+            .setContentText(if (isStart) "模拟定位运行中" else "暂停保持当前位置，可继续或停止")
             .setOngoing(true).setOnlyAlertOnce(true).setContentIntent(open)
             .addAction(0, if (isStart) "暂停" else "继续", action(if (isStart) ACTION_PAUSE else ACTION_RESUME, 1))
             .addAction(0, "停止", action(ACTION_STOP, 2)).build()
@@ -331,7 +330,7 @@ class GpsService : Service() {
     }
 
     private fun mockLocation() {
-        addTestProvider()
+        prepareRootEngine()
         model?.run {
             when (naviType) {
                 NaviType.LOCATION -> {
@@ -373,7 +372,7 @@ class GpsService : Service() {
         }
 
         msg.let {
-            addTestProvider()
+            prepareRootEngine()
             isStart = true
             handle.removeCallbacksAndMessages(null)
             handle.sendMessage(it)
@@ -410,56 +409,22 @@ class GpsService : Service() {
             else -> {}
         }
 
-        val loc = Location(providerStr)
-
-        loc.accuracy = 1.0f
-        loc.bearing =
-            if (isSingle && isLocationQuiver())
-                Random.nextInt(0, 360).toFloat()
-            else bearing
-        loc.speed = if (isSingle) 0F else mSpeed
-        loc.longitude = gps84[0]
-        loc.latitude = gps84[1]
-        loc.altitude = Math.random() * 10
-        loc.time = System.currentTimeMillis()
-        loc.elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-        //通知悬浮窗当前位置
+        val options = com.yadea.smartmoto.root.RootEngine.prefs(this)
+        com.yadea.smartmoto.root.RootEngine.offer(com.yadea.smartmoto.root.RootFrame(
+            gps84[1], gps84[0], if (isSingle) 0.0 else mSpeed.toDouble(), bearing.toDouble(),
+            options.getString("altitude", "80.0")!!.toDouble(),
+            options.getString("accuracy", "1.0")!!.toFloat()))
         FloatingViewManger.INSTANCE.setCurLocation(latLng)
         _location.value = latLng
-
-        mockGps(loc)
     }
 
     private fun removeGps() {
-        // Each provider is cleaned independently; a missing GPS test provider must not strand network.
-        locationManager?.let { manager ->
-            for (provider in listOf(providerStr, networkStr)) {
-                runCatching { manager.setTestProviderEnabled(provider, false) }
-                runCatching { manager.removeTestProvider(provider) }
-            }
-        }
+        if (destroying) com.yadea.smartmoto.root.RootEngine.stop()
+        else com.yadea.smartmoto.root.RootEngine.hold()
         isStart = false
         FloatingViewManger.INSTANCE.stopMock()
-        // Preserve the mode while paused so the floating resume button resumes single-point mode too.
         naviType = if (destroying) NaviType.NONE else model?.naviType ?: NaviType.NONE
-        if (model != null) showNotification()
-    }
-
-    private fun mockGps(location: Location) {
-        locationManager?.run {
-            try {
-                setTestProviderLocation(providerStr, location)
-                //network
-                location.run {
-                    provider = networkStr
-                    setTestProviderLocation(networkStr, location)
-                }
-            } catch (e: Exception) {
-                handle.removeCallbacksAndMessages(null)
-                ToastUtils.showLong("模拟位置写入失败，请重新检查开发者选项和定位权限")
-                stopSelf()
-            }
-        }
+        if (!destroying && model != null) showNotification()
     }
 
     /**
@@ -469,49 +434,11 @@ class GpsService : Service() {
         return MMKVUtils.isLocationVibrationSwitch() && !isLocationAdjust
     }
 
-    private fun addTestProvider() {
-        locationManager?.run {
-            try {
-                var powerUsageMedium = Criteria.POWER_LOW
-                var accuracyCoarse = Criteria.ACCURACY_FINE
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    powerUsageMedium = ProviderProperties.POWER_USAGE_LOW
-                    accuracyCoarse = ProviderProperties.ACCURACY_FINE
-                }
-                addTestProvider(
-                    providerStr,
-                    false,
-                    true,
-                    true,
-                    true,
-                    true,
-                    true,
-                    true,
-                    powerUsageMedium,
-                    accuracyCoarse
-                )
-                if (!isProviderEnabled(providerStr)) {
-                    setTestProviderEnabled(providerStr, true)
-                }
-                addTestProvider(
-                    networkStr,
-                    true,
-                    false,
-                    true,
-                    true,
-                    true,
-                    true,
-                    true,
-                    powerUsageMedium,
-                    accuracyCoarse
-                )
-                //network
-                if (!isProviderEnabled(networkStr)) {
-                    setTestProviderEnabled(networkStr, true)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+    private fun prepareRootEngine() {
+        com.yadea.smartmoto.root.RootEngine.start(this) { message ->
+            ToastUtils.showLong(message)
+            stopSelf()
         }
+        com.yadea.smartmoto.root.RootEngine.resume()
     }
 }

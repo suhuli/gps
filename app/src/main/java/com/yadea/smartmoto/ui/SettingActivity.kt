@@ -36,6 +36,9 @@ class SettingActivity : BaseActivity<ActivitySettingBinding, BaseViewModel>() {
     }
 
     override fun initView() {
+        findViewById<android.view.View>(R.id.btn_root_engine).setOnClickListener {
+            startActivity(android.content.Intent(this, RootEngineActivity::class.java))
+        }
         findViewById<android.view.View>(R.id.btn_map_provider).setOnClickListener {
             androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("切换地图服务")

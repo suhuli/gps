@@ -25,13 +25,7 @@ import kotlin.collections.ArrayList
 object Utils {
 
     /** A permission probe must never add/remove GPS providers or disrupt a running session. */
-    fun isAllowMockLocation(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT < 23) return Settings.Secure.getInt(context.contentResolver, Settings.Secure.ALLOW_MOCK_LOCATION, 0) != 0
-        return try {
-            val ops = context.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
-            ops.checkOpNoThrow(android.app.AppOpsManager.OPSTR_MOCK_LOCATION, android.os.Process.myUid(), context.packageName) == android.app.AppOpsManager.MODE_ALLOWED
-        } catch (e: Exception) { false }
-    }
+    fun isAllowMockLocation(context: Context): Boolean = com.yadea.smartmoto.root.RootEngine.available(context)
 
     /**
      * @param array 原数据

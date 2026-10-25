@@ -140,7 +140,7 @@ class MockLocationActivity : BaseActivity<ActivityNaviBinding, BaseViewModel>(),
             if (!Utils.isAllowMockLocation(this@MockLocationActivity)) {
                 Toast.makeText(
                     this@MockLocationActivity,
-                    "将本应用设置为\"模拟位置信息应用\"，否则无法正常使用",
+                    "请先在 LSPosed 启用雅迪智行模块并重启，检查 Root 引擎连接",
                     Toast.LENGTH_SHORT
                 ).show()
                 return
