@@ -162,6 +162,17 @@ class GpsService : Service() {
 
             }
         }
+        com.yadea.smartmoto.root.RootMotion.installWakeup {
+            handle.post {
+                if (isStart && naviType == NaviType.LOCATION) {
+                    model?.locationModel?.let {
+                        motionTick = SystemClock.uptimeMillis()
+                        handle.removeMessages(START_MOCK_LOCATION)
+                        handle.obtainMessage(START_MOCK_LOCATION,it).sendToTarget()
+                    }
+                }
+            }
+        }
         initLocationManager()
     }
 
@@ -416,6 +427,7 @@ class GpsService : Service() {
 
 
     override fun onDestroy() {
+        com.yadea.smartmoto.root.RootMotion.installWakeup(null)
         isRunning = false
         _location.value = null
         destroying = true

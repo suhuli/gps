@@ -71,11 +71,15 @@ object MotionMath {
 }
 object RootMotion {
     data class Command(val bearing: Double = 0.0, val speedKmh: Double = 0.0, val automatic: Boolean = false)
+    @Volatile private var wakeup: (() -> Unit)? = null
+    fun installWakeup(callback: (() -> Unit)?) { wakeup=callback }
     @Volatile var command = Command()
         private set
     fun set(bearing: Double, speed: Double, automatic: Boolean) {
         require(bearing.isFinite() && speed.isFinite() && speed in 0.0..300.0)
+        val previous=command
         command = Command(((bearing%360)+360)%360, speed, automatic)
+        if(previous.speedKmh==0.0 && speed>0.0) wakeup?.invoke()
     }
-    fun stop() { command = Command() }
+    fun stop() { val previous=command; command = Command(); if(previous.speedKmh>0.0) wakeup?.invoke() }
 }

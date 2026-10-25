@@ -26,4 +26,10 @@ class RoutePlanTest {
     @Test fun wrapsAntimeridian() { val point=MotionMath.step(RoutePoint(0.0,179.999),90.0,1000.0); assertTrue(point.longitude in -180.0..-179.0) }
     @Test fun zeroDistanceDoesNotMove() { val point=RoutePoint(30.0,120.0); val result=MotionMath.step(point,25.0,0.0); assertEquals(point.latitude,result.latitude,1e-10); assertEquals(point.longitude,result.longitude,1e-10) }
     @Test fun motionStops() { RootMotion.set(-90.0,10.0,true); assertEquals(270.0,RootMotion.command.bearing,0.0); RootMotion.stop(); assertEquals(0.0,RootMotion.command.speedKmh,0.0); assertFalse(RootMotion.command.automatic) }
+    @Test fun motionTransitionsWakeDelayedJitterTask() {
+        RootMotion.stop(); var calls=0; RootMotion.installWakeup { calls++ }
+        try { RootMotion.set(0.0,10.0,false); assertEquals(1,calls); RootMotion.set(90.0,10.0,false); assertEquals(1,calls); RootMotion.stop(); assertEquals(2,calls) }
+        finally { RootMotion.installWakeup(null); RootMotion.stop() }
+    }
+
 }

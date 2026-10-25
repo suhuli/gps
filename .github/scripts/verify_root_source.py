@@ -43,3 +43,5 @@ print('Native/peer guardrails passed: bundled native ABI/lease, read-only peers,
 
 assert 'if (uid == android.os.Process.SYSTEM_UID || uid == 0) return true' not in binder
 print('Shared-UID controller bypass is absent; peers cannot obtain write authority through UID 1000.')
+
+assert 'RootMotion.installWakeup' in service and 'handle.removeMessages(START_MOCK_LOCATION)' in service
